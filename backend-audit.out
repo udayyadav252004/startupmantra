@@ -1,0 +1,12 @@
+[dotenv@17.3.1] injecting env (5) from .env -- tip: ⚙️  override existing env vars with { override: true }
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  write to custom object with { processEnv: myObject }
+[ai-config] OpenRouter environment check {
+  apiKeyLoaded: true,
+  apiKeyPreview: 'sk-or-v1...a6fe',
+  baseURL: 'https://openrouter.ai/api/v1',
+  model: 'qwen/qwen3-coder:free',
+  httpReferer: 'http://localhost:5173',
+  appTitle: 'StartupMantra'
+}
+Server running at http://localhost:5065
+Restart the backend after changing backend/.env values.

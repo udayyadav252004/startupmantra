@@ -1,0 +1,80 @@
+﻿@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap");
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  color: #f8efe4;
+  background:
+    radial-gradient(circle at top, rgba(255, 129, 24, 0.2), transparent 38%),
+    radial-gradient(circle at 85% 15%, rgba(255, 180, 80, 0.12), transparent 24%),
+    linear-gradient(180deg, #111315 0%, #09090b 55%, #050506 100%);
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+* {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(251, 146, 60, 0.35) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(251, 146, 60, 0.32);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  background:
+    radial-gradient(circle at top, rgba(255, 129, 24, 0.2), transparent 38%),
+    radial-gradient(circle at 85% 15%, rgba(255, 180, 80, 0.12), transparent 24%),
+    linear-gradient(180deg, #111315 0%, #09090b 55%, #050506 100%);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.6), transparent 85%);
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(251, 146, 60, 0.28);
+  color: #fff7ed;
+}

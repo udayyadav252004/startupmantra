@@ -1,0 +1,74 @@
+(node:6112) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[generate-ideas] AI request failed. {
+  message: '429 Provider returned error',
+  status: 429,
+  code: 429,
+  type: undefined,
+  providerMessage: 'Provider returned error'
+}
+[generate-ideas] AI request failed. {
+  message: '429 Provider returned error',
+  status: 429,
+  code: 429,
+  type: undefined,
+  providerMessage: 'Provider returned error'
+}
+[generate-ideas] AI request failed. {
+  message: '429 Provider returned error',
+  status: 429,
+  code: 429,
+  type: undefined,
+  providerMessage: 'Provider returned error'
+}
+[express] Invalid JSON body. Expected property name or '}' in JSON at position 1 (line 1 column 2)
+[express] Invalid JSON body. Expected property name or '}' in JSON at position 1 (line 1 column 2)
+[generate-ideas] AI request failed. {
+  message: '429 Provider returned error',
+  status: 429,
+  code: 429,
+  type: undefined,
+  providerMessage: 'Provider returned error'
+}
+[generate-ideas] AI request failed. {
+  message: '429 Provider returned error',
+  status: 429,
+  code: 429,
+  type: undefined,
+  providerMessage: 'Provider returned error'
+}
+[generate-ideas] AI request failed. {
+  message: '429 Provider returned error',
+  status: 429,
+  code: 429,
+  type: undefined,
+  providerMessage: 'Provider returned error'
+}
+[generate-ideas] AI request failed. {
+  message: '429 Provider returned error',
+  status: 429,
+  code: 429,
+  type: undefined,
+  providerMessage: 'Provider returned error'
+}
+[generate-ideas] AI request failed. {
+  message: '429 Provider returned error',
+  status: 429,
+  code: 429,
+  type: undefined,
+  providerMessage: 'Provider returned error'
+}
+[generate-ideas] AI request failed. {
+  message: '429 Provider returned error',
+  status: 429,
+  code: 429,
+  type: undefined,
+  providerMessage: 'Provider returned error'
+}
+[generate-ideas] AI request failed. {
+  message: '429 Provider returned error',
+  status: 429,
+  code: 429,
+  type: undefined,
+  providerMessage: 'Provider returned error'
+}

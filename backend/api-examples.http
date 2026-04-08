@@ -1,0 +1,97 @@
+﻿### Signup
+POST http://localhost:5000/auth/signup
+Content-Type: application/json
+
+{
+  "name": "Ada Lovelace",
+  "email": "ada@example.com",
+  "password": "password123"
+}
+
+### Login
+POST http://localhost:5000/auth/login
+Content-Type: application/json
+
+{
+  "email": "ada@example.com",
+  "password": "password123"
+}
+
+### Get ideas
+GET http://localhost:5000/api/ideas
+
+### Submit startup idea
+POST http://localhost:5000/api/ideas
+Content-Type: application/json
+
+{
+  "title": "AI bookkeeping assistant",
+  "description": "A web app that helps local stores track sales and expenses.",
+  "targetAudience": "Small business owners",
+  "budget": 5000,
+  "experienceLevel": "Beginner"
+}
+
+### Get saved roadmaps
+GET http://localhost:5000/api/roadmaps
+
+### Generate startup roadmap
+POST http://localhost:5000/generate-roadmap
+Content-Type: application/json
+
+{
+  "ideaId": "idea-123",
+  "title": "AI bookkeeping assistant",
+  "description": "A web app that helps local stores track sales and expenses.",
+  "targetAudience": "Small business owners",
+  "budget": 5000,
+  "experienceLevel": "Beginner"
+}
+
+### Generate startup ideas
+POST http://localhost:5000/generate-ideas
+Content-Type: application/json
+
+{
+  "category": "education"
+}
+
+### Startup mentor chat
+POST http://localhost:5000/chat
+Content-Type: application/json
+
+{
+  "ideaId": "idea-123",
+  "title": "AI bookkeeping assistant",
+  "description": "A web app that helps local stores track sales and expenses.",
+  "targetAudience": "Small business owners",
+  "budget": 5000,
+  "experienceLevel": "Beginner",
+  "question": "What should my MVP include?",
+  "history": [
+    {
+      "role": "user",
+      "content": "How do I validate demand?"
+    },
+    {
+      "role": "assistant",
+      "content": "Start with 10 interviews and a simple landing page test."
+    }
+  ]
+}
+
+### Generate startup roadmap from plain idea text
+POST http://localhost:5000/generate-roadmap
+Content-Type: application/json
+
+{
+  "idea": "Build a subscription-based app that helps remote teams run daily standups asynchronously."
+}
+
+### Get current user
+GET http://localhost:5000/auth/me
+Authorization: Bearer YOUR_JWT_TOKEN
+
+### Protected route
+GET http://localhost:5000/api/dashboard
+Authorization: Bearer YOUR_JWT_TOKEN
