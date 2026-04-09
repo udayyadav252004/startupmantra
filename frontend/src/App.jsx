@@ -1,6 +1,7 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const AUTH_STORAGE_KEY = 'startupmantra-auth';
+const API = import.meta.env.VITE_API_URL;
 
 const initialForm = {
   title: '',
@@ -118,8 +119,21 @@ function buildAuthHeaders(token) {
   };
 }
 
-async function fetchJson(url, options) {
-  const response = await fetch(url, options);
+function buildApiUrl(path) {
+  const base = String(API || '').trim().replace(/\/$/, '');
+
+  if (!base) {
+    throw new Error('VITE_API_URL is not configured.');
+  }
+
+  return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+async function fetchJson(url, options = {}) {
+  const response = await fetch(buildApiUrl(url), {
+    ...options,
+    credentials: 'include',
+  });
   let payload = {};
 
   try {
@@ -1438,3 +1452,6 @@ export default function App() {
     </div>
   );
 }
+
+
+

@@ -9,10 +9,6 @@ let openaiClient;
 let cachedClientSignature = '';
 let localEnvConfig;
 
-const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1';
-const DEFAULT_MODEL = 'qwen/qwen3-coder:free';
-const DEFAULT_HTTP_REFERER = 'http://localhost:5173';
-const DEFAULT_APP_TITLE = 'StartupMantra';
 const DEFAULT_RETRY_DELAY_MS = 1000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 10000;
 const MAX_RETRIES = 2;
@@ -58,43 +54,44 @@ function getPreferredAiEnvValue(name, fallback = '') {
 function getOpenAIConfig() {
   return {
     apiKey: getPreferredAiEnvValue('OPENAI_API_KEY'),
-    baseURL: getPreferredAiEnvValue('OPENAI_BASE_URL', DEFAULT_BASE_URL),
-    model: getPreferredAiEnvValue('OPENAI_MODEL', DEFAULT_MODEL),
-    httpReferer: getPreferredAiEnvValue('OPENAI_HTTP_REFERER', DEFAULT_HTTP_REFERER),
-    appTitle: getPreferredAiEnvValue('OPENAI_APP_TITLE', DEFAULT_APP_TITLE),
+    baseURL: getPreferredAiEnvValue('OPENAI_BASE_URL'),
+    model: getPreferredAiEnvValue('OPENAI_MODEL'),
+    httpReferer: getPreferredAiEnvValue('OPENAI_HTTP_REFERER'),
+    appTitle: getPreferredAiEnvValue('OPENAI_APP_TITLE'),
   };
 }
 
-function maskApiKey(apiKey) {
-  if (!apiKey) {
-    return 'missing';
-  }
+function isProduction() {
+  return process.env.NODE_ENV === 'production';
+}
 
-  if (apiKey.length <= 12) {
-    return `${apiKey.slice(0, 3)}***`;
+function logAiInfo(...args) {
+  if (!isProduction()) {
+    console.log(...args);
   }
-
-  return `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`;
 }
 
 function logOpenAIConfigStatus() {
   const config = getOpenAIConfig();
 
-  console.log('[ai-config] OpenRouter environment check', {
+  logAiInfo('[ai-config] OpenRouter environment check', {
     apiKeyLoaded: Boolean(config.apiKey),
-    apiKeyPreview: maskApiKey(config.apiKey),
-    baseURL: config.baseURL,
+    baseURLLoaded: Boolean(config.baseURL),
     model: config.model,
-    httpReferer: config.httpReferer,
-    appTitle: config.appTitle,
+    httpRefererLoaded: Boolean(config.httpReferer),
+    appTitleLoaded: Boolean(config.appTitle),
   });
 }
 
 function getOpenAIClient() {
   const config = getOpenAIConfig();
 
-  if (!config.apiKey) {
-    throw new Error('OPENAI_API_KEY is missing in backend/.env. Restart the backend after updating env values.');
+  const missingVariables = ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_HTTP_REFERER', 'OPENAI_APP_TITLE'].filter(
+    (name) => !getPreferredAiEnvValue(name)
+  );
+
+  if (missingVariables.length > 0) {
+    throw new Error(`Missing required AI environment variables: ${missingVariables.join(', ')}.`);
   }
 
   const nextClientSignature = [config.apiKey, config.baseURL, config.httpReferer, config.appTitle].join('|');
@@ -607,10 +604,10 @@ async function generateAIResponse(messages, type, options = {}) {
   let lastError = null;
 
   for (const model of fallbackModels) {
-    console.log('Trying model:', model);
+    logAiInfo('Trying model:', model);
 
     for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt += 1) {
-      console.log('Retry attempt:', attempt);
+      logAiInfo('Retry attempt:', attempt);
 
       try {
         const requestBody = {
@@ -658,7 +655,7 @@ async function generateAIResponse(messages, type, options = {}) {
         const shouldRetry = shouldRetryAiRequest(error) && attempt <= MAX_RETRIES;
 
         if (!shouldRetry) {
-          console.log(`[ai] Switching to the next model after failure: ${model}`);
+          logAiInfo(`[ai] Switching to the next model after failure: ${model}`);
           break;
         }
 

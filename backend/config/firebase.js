@@ -1,26 +1,29 @@
-const path = require('path');
-const { readFileSync } = require('fs');
-const { getApps, initializeApp, applicationDefault, cert } = require('firebase-admin/app');
+const { getApps, initializeApp, cert } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 
 let firestoreDb;
 
-function getCredentialOptions() {
-  const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_KEY_PATH;
+function parseServiceAccount() {
+  const rawValue = String(process.env.FIREBASE_SERVICE_ACCOUNT || '').trim();
 
-  if (serviceAccountPath) {
-    const fullPath = path.resolve(__dirname, '..', serviceAccountPath);
-    const serviceAccount = JSON.parse(readFileSync(fullPath, 'utf8'));
-
-    return {
-      credential: cert(serviceAccount),
-    };
+  if (!rawValue) {
+    throw new Error('FIREBASE_SERVICE_ACCOUNT is missing.');
   }
 
-  // If you deploy on Google Cloud, applicationDefault() can use built-in credentials.
+  try {
+    return JSON.parse(rawValue);
+  } catch (error) {
+    throw new Error('FIREBASE_SERVICE_ACCOUNT must be valid JSON.');
+  }
+}
+
+function getFirebaseOptions() {
+  const serviceAccount = parseServiceAccount();
+  const projectId = String(process.env.FIREBASE_PROJECT_ID || serviceAccount.project_id || '').trim();
+
   return {
-    credential: applicationDefault(),
-    projectId: process.env.FIREBASE_PROJECT_ID || undefined,
+    credential: cert(serviceAccount),
+    projectId: projectId || undefined,
   };
 }
 
@@ -30,13 +33,11 @@ function getDb() {
   }
 
   try {
-    const app = getApps()[0] || initializeApp(getCredentialOptions());
+    const app = getApps()[0] || initializeApp(getFirebaseOptions());
     firestoreDb = getFirestore(app);
     return firestoreDb;
   } catch (error) {
-    throw new Error(
-      'Firebase Admin is not configured. Add FIREBASE_SERVICE_ACCOUNT_KEY_PATH or application default credentials.'
-    );
+    throw new Error(error.message || 'Firebase Admin is not configured correctly.');
   }
 }
 

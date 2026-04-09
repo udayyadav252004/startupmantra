@@ -4,7 +4,6 @@ const express = require('express');
 const cors = require('cors');
 
 const { logOpenAIConfigStatus } = require('./config/openai');
-const testRoute = require('./routes/test');
 const authRoutes = require('./routes/auth');
 const chatRoutes = require('./routes/chat');
 const generateIdeasRoutes = require('./routes/generateIdeas');
@@ -21,10 +20,44 @@ process.on('unhandledRejection', (reason) => {
   console.error('[process] Unhandled rejection.', reason);
 });
 
-const app = express();
-const PORT = process.env.PORT || 5000;
+function getAllowedOrigins() {
+  return String(process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
 
-app.use(cors());
+const app = express();
+const PORT = Number(process.env.PORT) || 5000;
+const allowedOrigins = getAllowedOrigins();
+
+app.use((req, res, next) => {
+  console.log('Incoming:', req.method, req.url);
+  next();
+});
+
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    if (allowedOrigins.length === 0) {
+      if (process.env.NODE_ENV === 'production') {
+        return callback(new Error('CORS_ALLOWED_ORIGINS is not configured.'));
+      }
+
+      return callback(null, true);
+    }
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error('CORS origin not allowed.'));
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
 app.get('/', (req, res) => {
@@ -34,7 +67,13 @@ app.get('/', (req, res) => {
   });
 });
 
-app.use('/test', testRoute);
+app.get('/test', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'Backend running',
+  });
+});
+
 app.use('/auth', authRoutes);
 app.use('/api/ideas', ideaRoutes);
 app.use('/api/roadmaps', roadmapHistoryRoutes);
@@ -46,13 +85,10 @@ app.use('/api', protectedRoutes);
 
 app.use((error, req, res, next) => {
   if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
-    console.error('[express] Invalid JSON body.', error.message);
     return res.status(400).json({
       message: 'Invalid JSON request body.',
     });
   }
-
-  console.error('[express] Unhandled route error.', error);
 
   if (res.headersSent) {
     return next(error);
@@ -65,6 +101,5 @@ app.use((error, req, res, next) => {
 
 app.listen(PORT, () => {
   logOpenAIConfigStatus();
-  console.log(`Server running at http://localhost:${PORT}`);
-  console.log('Restart the backend after changing backend/.env values.');
+  console.log(`Server running on port ${PORT}`);
 });
