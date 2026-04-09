@@ -1,6 +1,8 @@
 const { getApps, initializeApp, cert } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
 const { getFirestore } = require('firebase-admin/firestore');
 
+let firebaseApp;
 let firestoreDb;
 
 function parseServiceAccount() {
@@ -27,18 +29,30 @@ function getFirebaseOptions() {
   };
 }
 
-function getDb() {
-  if (firestoreDb) {
-    return firestoreDb;
+function getFirebaseApp() {
+  if (firebaseApp) {
+    return firebaseApp;
   }
 
   try {
-    const app = getApps()[0] || initializeApp(getFirebaseOptions());
-    firestoreDb = getFirestore(app);
-    return firestoreDb;
+    firebaseApp = getApps()[0] || initializeApp(getFirebaseOptions());
+    return firebaseApp;
   } catch (error) {
     throw new Error(error.message || 'Firebase Admin is not configured correctly.');
   }
 }
 
-module.exports = { getDb };
+function getDb() {
+  if (firestoreDb) {
+    return firestoreDb;
+  }
+
+  firestoreDb = getFirestore(getFirebaseApp());
+  return firestoreDb;
+}
+
+function getAdminAuth() {
+  return getAuth(getFirebaseApp());
+}
+
+module.exports = { getAdminAuth, getDb, getFirebaseApp };

@@ -3,6 +3,7 @@ const { randomUUID } = require('crypto');
 const express = require('express');
 
 const { getDb } = require('../config/firebase');
+const { authenticateFirebaseUser } = require('../middleware/firebaseAuth');
 const {
   buildMockFallbackData,
   generateAIResponse,
@@ -14,7 +15,9 @@ const router = express.Router();
 const ROADMAPS_COLLECTION = 'roadmaps';
 const ROADMAP_SAVE_TIMEOUT_MS = 5000;
 
-function buildRoadmapRecord(body, ideaSummary, promptUsed, model, roadmap) {
+router.use(authenticateFirebaseUser);
+
+function buildRoadmapRecord(body, ideaSummary, promptUsed, model, roadmap, userId) {
   return {
     id: randomUUID(),
     ideaId: String(body.ideaId || '').trim(),
@@ -23,6 +26,7 @@ function buildRoadmapRecord(body, ideaSummary, promptUsed, model, roadmap) {
     promptUsed,
     model,
     roadmap,
+    userId,
     createdAt: new Date().toISOString(),
   };
 }
@@ -83,7 +87,8 @@ router.post('/', async (req, res) => {
       ideaSummary,
       promptUsed,
       aiResult.modelUsed,
-      aiResult.data
+      aiResult.data,
+      req.firebaseUser.uid
     );
 
     const storageWarning = await saveRoadmapRecord(savedRoadmap);
@@ -105,7 +110,8 @@ router.post('/', async (req, res) => {
       ideaSummary,
       promptUsed,
       'fallback-system',
-      fallbackRoadmap
+      fallbackRoadmap,
+      req.firebaseUser.uid
     );
 
     const storageWarning = await saveRoadmapRecord(savedRoadmap);

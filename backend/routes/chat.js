@@ -1,6 +1,7 @@
 const express = require('express');
 
 const { getDb } = require('../config/firebase');
+const { authenticateFirebaseUser } = require('../middleware/firebaseAuth');
 const {
   buildMockFallbackData,
   generateAIResponse,
@@ -12,7 +13,9 @@ const { buildMentorPrompt, normalizeChatHistory } = require('../prompts/chatProm
 const router = express.Router();
 const IDEAS_COLLECTION = 'ideas';
 
-async function getIdeaContextFromStore(ideaId) {
+router.use(authenticateFirebaseUser);
+
+async function getIdeaContextFromStore(ideaId, userId) {
   if (!ideaId) {
     return null;
   }
@@ -24,7 +27,13 @@ async function getIdeaContextFromStore(ideaId) {
     throw new Error('Idea not found for chat context.');
   }
 
-  return ideaDoc.data();
+  const ideaData = ideaDoc.data();
+
+  if (ideaData.userId !== userId) {
+    throw new Error('You can only chat about your own ideas.');
+  }
+
+  return ideaData;
 }
 
 router.post('/', async (req, res) => {
@@ -48,7 +57,7 @@ router.post('/', async (req, res) => {
 
   if (!directIdeaSummary && ideaId) {
     try {
-      const storedIdea = await getIdeaContextFromStore(ideaId);
+      const storedIdea = await getIdeaContextFromStore(ideaId, req.firebaseUser.uid);
       ideaContextBody = {
         ...storedIdea,
         question,

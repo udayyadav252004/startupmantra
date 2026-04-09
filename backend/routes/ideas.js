@@ -3,11 +3,14 @@ const { randomUUID } = require('crypto');
 const express = require('express');
 
 const { getDb } = require('../config/firebase');
+const { authenticateFirebaseUser } = require('../middleware/firebaseAuth');
 
 const router = express.Router();
 const IDEAS_COLLECTION = 'ideas';
 
-function buildIdeaPayload(body) {
+router.use(authenticateFirebaseUser);
+
+function buildIdeaPayload(body, userId) {
   return {
     id: randomUUID(),
     title: String(body.title).trim(),
@@ -15,6 +18,7 @@ function buildIdeaPayload(body) {
     targetAudience: String(body.targetAudience).trim(),
     budget: Number(body.budget),
     experienceLevel: String(body.experienceLevel).trim(),
+    userId,
     createdAt: new Date().toISOString(),
   };
 }
@@ -26,7 +30,7 @@ function sortNewestFirst(items) {
 router.get('/', async (req, res) => {
   try {
     const db = getDb();
-    const snapshot = await db.collection(IDEAS_COLLECTION).get();
+    const snapshot = await db.collection(IDEAS_COLLECTION).where('userId', '==', req.firebaseUser.uid).get();
     const ideas = sortNewestFirst(
       snapshot.docs.map((doc) => ({
         id: doc.id,
@@ -65,15 +69,17 @@ router.post('/', async (req, res) => {
 
   try {
     const db = getDb();
-    const idea = buildIdeaPayload({
-      title,
-      description,
-      targetAudience,
-      budget: numericBudget,
-      experienceLevel,
-    });
+    const idea = buildIdeaPayload(
+      {
+        title,
+        description,
+        targetAudience,
+        budget: numericBudget,
+        experienceLevel,
+      },
+      req.firebaseUser.uid
+    );
 
-    // Save the submitted idea as a document in Firestore.
     await db.collection(IDEAS_COLLECTION).doc(idea.id).set(idea);
 
     return res.status(201).json({

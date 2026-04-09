@@ -1,6 +1,17 @@
 import { useEffect, useState } from 'react';
+import {
+  GoogleAuthProvider,
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  sendEmailVerification,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut as firebaseSignOut,
+  updateProfile,
+} from 'firebase/auth';
 
-const AUTH_STORAGE_KEY = 'startupmantra-auth';
+import { auth, googleProvider, hasFirebaseConfig } from './firebase';
+
 const API = import.meta.env.VITE_API_URL;
 
 const initialForm = {
@@ -69,56 +80,6 @@ function createMentorIntro(title) {
   return `I am your StartupMantra mentor for "${title}". Ask about MVP scope, validation, pricing, customers, or go-to-market.`;
 }
 
-function getStoredSession() {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  try {
-    const rawValue = window.localStorage.getItem(AUTH_STORAGE_KEY);
-
-    if (!rawValue) {
-      return null;
-    }
-
-    const parsedValue = JSON.parse(rawValue);
-
-    if (!parsedValue.token) {
-      return null;
-    }
-
-    return parsedValue;
-  } catch (error) {
-    return null;
-  }
-}
-
-function saveStoredSession(session) {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
-}
-
-function clearStoredSession() {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  window.localStorage.removeItem(AUTH_STORAGE_KEY);
-}
-
-function buildAuthHeaders(token) {
-  if (!token) {
-    return {};
-  }
-
-  return {
-    Authorization: `Bearer ${token}`,
-  };
-}
-
 function buildApiUrl(path) {
   const base = String(API || '').trim().replace(/\/$/, '');
 
@@ -129,11 +90,89 @@ function buildApiUrl(path) {
   return `${base}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
-async function fetchJson(url, options = {}) {
-  const response = await fetch(buildApiUrl(url), {
+function isGoogleProviderUser(user) {
+  return Boolean(
+    user?.providerData?.some((provider) => provider.providerId === GoogleAuthProvider.PROVIDER_ID)
+  );
+}
+
+function normalizeFirebaseUser(user) {
+  if (!user) {
+    return null;
+  }
+
+  return {
+    uid: user.uid,
+    name: user.displayName || user.email?.split('@')[0] || 'StartupMantra User',
+    email: user.email || '',
+    emailVerified: Boolean(user.emailVerified || isGoogleProviderUser(user)),
+  };
+}
+
+async function getFirebaseSession({ requireVerified = true } = {}) {
+  if (!hasFirebaseConfig || !auth) {
+    throw new Error('Firebase Auth is not configured.');
+  }
+
+  const user = auth.currentUser;
+
+  if (!user) {
+    throw new Error('Please sign in to continue.');
+  }
+
+  await user.reload();
+
+  const normalizedUser = normalizeFirebaseUser(auth.currentUser || user);
+
+  if (requireVerified && !normalizedUser?.emailVerified) {
+    throw new Error('Please verify your email before using StartupMantra.');
+  }
+
+  const token = await user.getIdToken();
+
+  return {
+    token,
+    user,
+    userId: user.uid,
+    normalizedUser,
+  };
+}
+
+async function fetchJson(url, options = {}, config = {}) {
+  const {
+    requireAuth = false,
+    includeUserIdInBody = false,
+    includeUserIdInQuery = false,
+  } = config;
+  let requestUrl = buildApiUrl(url);
+  const requestOptions = {
     ...options,
     credentials: 'include',
-  });
+    headers: {
+      ...(options.headers || {}),
+    },
+  };
+
+  if (requireAuth) {
+    const session = await getFirebaseSession();
+    requestOptions.headers.Authorization = `Bearer ${session.token}`;
+
+    if (includeUserIdInQuery) {
+      const separator = requestUrl.includes('?') ? '&' : '?';
+      requestUrl = `${requestUrl}${separator}userId=${encodeURIComponent(session.userId)}`;
+    }
+
+    if (includeUserIdInBody) {
+      const rawPayload = options.body ? JSON.parse(options.body) : {};
+      requestOptions.body = JSON.stringify({
+        ...rawPayload,
+        userId: session.userId,
+      });
+      requestOptions.headers['Content-Type'] = requestOptions.headers['Content-Type'] || 'application/json';
+    }
+  }
+
+  const response = await fetch(requestUrl, requestOptions);
   let payload = {};
 
   try {
@@ -238,7 +277,6 @@ export default function App() {
   const [selectedRoadmapId, setSelectedRoadmapId] = useState('');
   const [authMode, setAuthMode] = useState('login');
   const [generatorCategory, setGeneratorCategory] = useState('tech');
-  const [authToken, setAuthToken] = useState('');
   const [authUser, setAuthUser] = useState(null);
   const [protectedMessage, setProtectedMessage] = useState('');
   const [backendStatus, setBackendStatus] = useState('Checking backend...');
@@ -261,14 +299,37 @@ export default function App() {
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [generatingIdeaId, setGeneratingIdeaId] = useState('');
 
-  async function loadDashboard() {
+  function resetPrivateWorkspace() {
+    setIdeas([]);
+    setRoadmaps([]);
+    setGeneratedIdeas([]);
+    setChatSessions({});
+    setSelectedIdeaId('');
+    setSelectedRoadmapId('');
+    setChatInput('');
+    setChatError('');
+    setIdeaMessage('');
+    setIdeaError('');
+    setGenerateMessage('');
+    setGenerateError('');
+    setGeneratorMessage('');
+    setGeneratorError('');
+  }
+
+  async function loadDashboard(options = {}) {
+    const includePrivateData = options?.includePrivateData ?? Boolean(authUser);
+
     setIsRefreshing(true);
     setDashboardError('');
 
     const results = await Promise.allSettled([
       fetchJson('/test'),
-      fetchJson('/api/ideas'),
-      fetchJson('/api/roadmaps'),
+      includePrivateData
+        ? fetchJson('/api/ideas', {}, { requireAuth: true, includeUserIdInQuery: true })
+        : Promise.resolve({ ideas: [] }),
+      includePrivateData
+        ? fetchJson('/api/roadmaps', {}, { requireAuth: true, includeUserIdInQuery: true })
+        : Promise.resolve({ roadmaps: [] }),
     ]);
 
     const [statusResult, ideasResult, roadmapsResult] = results;
@@ -302,68 +363,83 @@ export default function App() {
     setIsRefreshing(false);
   }
 
-  async function syncAuthSession(token, fallbackUser = null, options = {}) {
-    const { restore = false, successMessage = '' } = options;
+  useEffect(() => {
+    let isMounted = true;
 
-    setIsCheckingSession(true);
-    setAuthError('');
+    if (!hasFirebaseConfig || !auth) {
+      setAuthError('Firebase Auth is not configured.');
+      setIsCheckingSession(false);
+      loadDashboard({ includePrivateData: false });
+      return undefined;
+    }
 
-    try {
-      const [meData, dashboardData] = await Promise.all([
-        fetchJson('/auth/me', {
-          headers: {
-            ...buildAuthHeaders(token),
-          },
-        }),
-        fetchJson('/api/dashboard', {
-          headers: {
-            ...buildAuthHeaders(token),
-          },
-        }),
-      ]);
-
-      const resolvedUser = meData.user || fallbackUser;
-
-      setAuthToken(token);
-      setAuthUser(resolvedUser);
-      setProtectedMessage(dashboardData.message || 'Protected route verified.');
-      saveStoredSession({ token, user: resolvedUser });
-
-      if (successMessage) {
-        setAuthMessage(successMessage);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!isMounted) {
+        return;
       }
-    } catch (error) {
-      clearStoredSession();
-      setAuthToken('');
-      setAuthUser(null);
-      setProtectedMessage('');
-      setAuthError(
-        restore
-          ? 'Saved session expired or is invalid. Please log in again.'
-          : error instanceof Error
-            ? error.message
-            : 'Could not verify the current session.'
-      );
-    } finally {
-      setIsCheckingSession(false);
-    }
-  }
 
-  useEffect(() => {
-    loadDashboard();
-  }, []);
+      setIsCheckingSession(true);
 
-  useEffect(() => {
-    const savedSession = getStoredSession();
+      if (!user) {
+        setAuthUser(null);
+        setProtectedMessage('');
+        resetPrivateWorkspace();
+        await loadDashboard({ includePrivateData: false });
+        if (isMounted) {
+          setIsCheckingSession(false);
+        }
+        return;
+      }
 
-    if (!savedSession?.token) {
-      setIsCheckingSession(false);
-      return;
-    }
+      try {
+        await user.reload();
+        const currentUser = auth.currentUser || user;
+        const normalizedUser = normalizeFirebaseUser(currentUser);
 
-    setAuthToken(savedSession.token);
-    setAuthUser(savedSession.user || null);
-    syncAuthSession(savedSession.token, savedSession.user, { restore: true });
+        if (!normalizedUser?.emailVerified) {
+          await firebaseSignOut(auth);
+          if (!isMounted) {
+            return;
+          }
+          setAuthUser(null);
+          setProtectedMessage('');
+          resetPrivateWorkspace();
+          setAuthError('Please verify your email before using StartupMantra.');
+          await loadDashboard({ includePrivateData: false });
+          return;
+        }
+
+        if (!isMounted) {
+          return;
+        }
+
+        setAuthUser(normalizedUser);
+        setProtectedMessage('Email verified. Your ideas, roadmaps, and mentor chat are scoped to this account only.');
+        setAuthError('');
+        await loadDashboard({ includePrivateData: true });
+      } catch (error) {
+        console.error('[auth] Could not restore Firebase session.', error);
+        if (!isMounted) {
+          return;
+        }
+        setAuthUser(null);
+        setProtectedMessage('');
+        resetPrivateWorkspace();
+        setAuthError(
+          error instanceof Error ? error.message : 'Could not restore the current Firebase session.'
+        );
+        await loadDashboard({ includePrivateData: false });
+      } finally {
+        if (isMounted) {
+          setIsCheckingSession(false);
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -495,18 +571,28 @@ export default function App() {
     }
   }
 
-  function handleSignOut() {
-    clearStoredSession();
-    setAuthToken('');
-    setAuthUser(null);
-    setProtectedMessage('');
-    setAuthMessage('Signed out successfully.');
+  async function handleSignOut() {
+    if (!auth) {
+      setAuthError('Firebase Auth is not configured.');
+      return;
+    }
     setAuthError('');
+    try {
+      await firebaseSignOut(auth);
+      setAuthMessage('Signed out successfully.');
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Could not sign out right now.');
+    }
   }
 
   async function handleIdeaGeneratorSubmit(event) {
     event.preventDefault();
     const category = generatorCategory.trim();
+
+    if (!authUser) {
+      setGeneratorError('Sign in with a verified account to generate startup ideas.');
+      return;
+    }
 
     if (!category) {
       setGeneratorError('Choose or enter a category before generating startup ideas.');
@@ -526,6 +612,9 @@ export default function App() {
         body: JSON.stringify({
           category,
         }),
+      }, {
+        requireAuth: true,
+        includeUserIdInBody: true,
       });
 
       const nextIdeas = Array.isArray(data.result?.ideas) ? data.result.ideas : [];
@@ -539,32 +628,84 @@ export default function App() {
     }
   }
 
-  async function handleAuthSubmit(event) {
-    event.preventDefault();
+  async function handleGoogleSignIn() {
+    if (!auth || !googleProvider) {
+      setAuthError('Google sign-in is not configured.');
+      return;
+    }
+
     setIsSubmittingAuth(true);
     setAuthMessage('');
     setAuthError('');
 
     try {
-      const endpoint = authMode === 'signup' ? '/auth/signup' : '/auth/login';
-      const payload =
-        authMode === 'signup'
-          ? authForm
-          : {
-              email: authForm.email,
-              password: authForm.password,
-            };
+      await signInWithPopup(auth, googleProvider);
+      setAuthForm(initialAuthForm);
+      setAuthMessage('Signed in with Google successfully.');
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Could not sign in with Google.');
+    } finally {
+      setIsSubmittingAuth(false);
+    }
+  }
 
-      const data = await fetchJson(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+  async function handleAuthSubmit(event) {
+    event.preventDefault();
+
+    if (!auth) {
+      setAuthError('Firebase Auth is not configured.');
+      return;
+    }
+
+    const name = authForm.name.trim();
+    const email = authForm.email.trim();
+    const password = authForm.password;
+
+    setIsSubmittingAuth(true);
+    setAuthMessage('');
+    setAuthError('');
+
+    try {
+      if (authMode === 'signup') {
+        const credential = await createUserWithEmailAndPassword(auth, email, password);
+
+        if (name) {
+          await updateProfile(credential.user, {
+            displayName: name,
+          });
+        }
+
+        await sendEmailVerification(credential.user);
+        await firebaseSignOut(auth);
+
+        setAuthForm(initialAuthForm);
+        setAuthMode('login');
+        setAuthMessage('Verification email sent. Please verify before login.');
+        setProtectedMessage('');
+        return;
+      }
+
+      const credential = await signInWithEmailAndPassword(auth, email, password);
+      await credential.user.reload();
+      const currentUser = auth.currentUser || credential.user;
+      const normalizedUser = normalizeFirebaseUser(currentUser);
+
+      if (!normalizedUser?.emailVerified) {
+        let verificationMessage = 'Please verify your email before logging in.';
+
+        try {
+          await sendEmailVerification(currentUser);
+          verificationMessage = 'Email not verified. A new verification email has been sent. Please verify before logging in.';
+        } catch (verificationError) {
+          verificationMessage = 'Email not verified. Please check your inbox and verify before logging in.';
+        }
+
+        await firebaseSignOut(auth);
+        throw new Error(verificationMessage);
+      }
 
       setAuthForm(initialAuthForm);
-      await syncAuthSession(data.token, data.user, { successMessage: data.message });
+      setAuthMessage('Signed in successfully.');
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'Could not complete authentication.');
     } finally {
@@ -574,6 +715,12 @@ export default function App() {
 
   async function handleIdeaSubmit(event) {
     event.preventDefault();
+
+    if (!authUser) {
+      setIdeaError('Sign in with a verified account before saving an idea.');
+      return;
+    }
+
     setIsSubmittingIdea(true);
     setIdeaMessage('');
     setIdeaError('');
@@ -586,6 +733,9 @@ export default function App() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(formData),
+      }, {
+        requireAuth: true,
+        includeUserIdInBody: true,
       });
 
       setIdeas((current) => [data.idea, ...current]);
@@ -600,6 +750,11 @@ export default function App() {
   }
 
   async function handleGenerateRoadmap(idea) {
+    if (!authUser) {
+      setGenerateError('Sign in with a verified account before generating a roadmap.');
+      return;
+    }
+
     setGeneratingIdeaId(idea.id);
     setGenerateMessage('');
     setGenerateError('');
@@ -619,6 +774,9 @@ export default function App() {
           budget: idea.budget,
           experienceLevel: idea.experienceLevel,
         }),
+      }, {
+        requireAuth: true,
+        includeUserIdInBody: true,
       });
 
       const roadmapRecord = data.savedRoadmap || {
@@ -646,6 +804,11 @@ export default function App() {
 
   async function handleChatSubmit(event) {
     event.preventDefault();
+
+    if (!authUser) {
+      setChatError('Sign in with a verified account before using mentor chat.');
+      return;
+    }
 
     if (!selectedIdea) {
       setChatError('Select an idea before chatting with the mentor.');
@@ -696,6 +859,9 @@ export default function App() {
             content: message.content,
           })),
         }),
+      }, {
+        requireAuth: true,
+        includeUserIdInBody: true,
       });
 
       const assistantMessage = {
@@ -737,7 +903,7 @@ export default function App() {
                   Connected startup workflows, from idea discovery to roadmap execution.
                 </h1>
                 <p className="max-w-3xl text-base leading-8 text-stone-300 sm:text-lg">
-                  Generate startup ideas, save them to the backlog, build roadmaps, chat with the mentor, and verify auth-protected APIs from one frontend.
+                  Sign in with a verified Firebase account to generate ideas, save them privately, build roadmaps, and chat with the mentor in your own workspace.
                 </p>
               </div>
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -781,11 +947,11 @@ export default function App() {
                 {authUser ? (
                   <>
                     <div className={`${insetCardClass} p-5`}>
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-200">Signed in</p>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-200">Verified account</p>
                       <h2 className="mt-3 text-2xl font-black text-stone-50">{authUser.name || 'StartupMantra User'}</h2>
                       <p className="mt-2 text-sm text-stone-300">{authUser.email}</p>
                       <p className="mt-4 text-sm leading-6 text-stone-400">
-                        {protectedMessage || 'Protected route verified with the current JWT session.'}
+                        {protectedMessage || 'This verified Firebase account can only access its own ideas and roadmaps.'}
                       </p>
                     </div>
 
@@ -881,9 +1047,21 @@ export default function App() {
                       </button>
                     </form>
 
-                    <p className="text-sm leading-6 text-stone-400">
-                      This card connects `signup`, `login`, `me`, and the protected dashboard route so the frontend can verify the backend auth flow directly.
-                    </p>
+                    <div className="space-y-3">
+                      {googleProvider && (
+                        <button
+                          className={`${secondaryButtonClass} w-full`}
+                          disabled={isSubmittingAuth || isCheckingSession}
+                          onClick={handleGoogleSignIn}
+                          type="button"
+                        >
+                          {isSubmittingAuth ? 'Opening Google...' : 'Continue with Google'}
+                        </button>
+                      )}
+                      <p className="text-sm leading-6 text-stone-400">
+                        Email and password signups must verify email before login. Google sign-in can be used as a faster verified path.
+                      </p>
+                    </div>
                   </>
                 )}
               </div>
@@ -901,6 +1079,29 @@ export default function App() {
           </section>
         )}
 
+        {!hasFirebaseConfig ? (
+          <section className="mt-8">
+            <SurfaceCard className="p-6 sm:p-8">
+              <EmptyPanel
+                title="Firebase Auth is not configured"
+                body="Add your VITE_FIREBASE_* environment variables so users can sign in, verify email, and load private data."
+              />
+            </SurfaceCard>
+          </section>
+        ) : !authUser ? (
+          <section className="mt-8">
+            <SurfaceCard className="p-6 sm:p-8">
+              <EmptyPanel
+                title={isCheckingSession ? 'Checking your account' : 'Sign in to access your workspace'}
+                body={
+                  isCheckingSession
+                    ? 'We are checking Firebase Auth and your verification status.'
+                    : 'Use a verified email or Google sign-in to unlock your private ideas, roadmaps, and mentor chat. Each account only sees its own data.'
+                }
+              />
+            </SurfaceCard>
+          </section>
+        ) : (
         <div className="mt-8 grid gap-8 xl:grid-cols-[0.94fr_1.06fr]">
           <section className="space-y-6">
             <SurfaceCard className="p-6 sm:p-8">
@@ -911,7 +1112,7 @@ export default function App() {
                   </p>
                   <h2 className="mt-3 text-2xl font-black text-stone-50 sm:text-3xl">Generate startup ideas</h2>
                   <p className="mt-2 max-w-2xl text-sm leading-7 text-stone-400">
-                    Pick a category, generate 3 to 5 startup suggestions from OpenAI, and load the best one straight into the submission form.
+                    Pick a category, generate 3 to 5 startup suggestions, and load the best one straight into your private idea form.
                   </p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-stone-300">
@@ -963,7 +1164,7 @@ export default function App() {
                     title={isGeneratingIdeas ? 'Generating idea suggestions' : 'No generated ideas yet'}
                     body={
                       isGeneratingIdeas
-                        ? 'OpenAI is preparing startup suggestions for the selected category.'
+                        ? 'The AI assistant is preparing startup suggestions for the selected category.'
                         : 'Run the generator to see 3 to 5 startup ideas here.'
                     }
                   />
@@ -1258,7 +1459,7 @@ export default function App() {
                   </div>
                   <div className="grid gap-2 text-sm text-stone-400 sm:text-right">
                     <p>Generated {formatDate(selectedRoadmap.createdAt)}</p>
-                    <p>Model: {selectedRoadmap.model || 'OpenAI model'}</p>
+                    <p>Model: {selectedRoadmap.model || 'AI model'}</p>
                   </div>
                 </div>
 
@@ -1448,10 +1649,15 @@ export default function App() {
             </SurfaceCard>
           </section>
         </div>
+        )}
       </main>
     </div>
   );
 }
+
+
+
+
 
 
 
