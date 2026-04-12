@@ -1,26 +1,26 @@
-﻿@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss";
 
 :root {
   color-scheme: dark;
-  color: #f8efe4;
-  background:
-    radial-gradient(circle at top, rgba(255, 129, 24, 0.2), transparent 38%),
-    radial-gradient(circle at 85% 15%, rgba(255, 180, 80, 0.12), transparent 24%),
-    linear-gradient(180deg, #111315 0%, #09090b 55%, #050506 100%);
-  font-family: "Space Grotesk", "Segoe UI", sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+  font-family: "Inter", "Segoe UI", sans-serif;
+  --bg-start: #060816;
+  --bg-mid: #0f172a;
+  --bg-end: #05070f;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --line-soft: rgba(255, 255, 255, 0.08);
 }
 
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
-  scrollbar-color: rgba(251, 146, 60, 0.35) transparent;
+  scrollbar-color: rgba(129, 140, 248, 0.35) transparent;
 }
 
 *::-webkit-scrollbar {
   width: 10px;
+  height: 10px;
 }
 
 *::-webkit-scrollbar-track {
@@ -29,7 +29,7 @@
 
 *::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: rgba(251, 146, 60, 0.32);
+  background: rgba(129, 140, 248, 0.32);
 }
 
 html,
@@ -45,10 +45,12 @@ html {
 
 body {
   min-width: 320px;
+  color: var(--text-primary);
   background:
-    radial-gradient(circle at top, rgba(255, 129, 24, 0.2), transparent 38%),
-    radial-gradient(circle at 85% 15%, rgba(255, 180, 80, 0.12), transparent 24%),
-    linear-gradient(180deg, #111315 0%, #09090b 55%, #050506 100%);
+    radial-gradient(circle at 14% 0%, rgba(99, 102, 241, 0.24), transparent 28%),
+    radial-gradient(circle at 82% 10%, rgba(168, 85, 247, 0.18), transparent 26%),
+    radial-gradient(circle at 50% 100%, rgba(34, 211, 238, 0.08), transparent 24%),
+    linear-gradient(180deg, var(--bg-start) 0%, var(--bg-mid) 48%, var(--bg-end) 100%);
 }
 
 body::before {
@@ -57,14 +59,23 @@ body::before {
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+    linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
   background-size: 48px 48px;
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.6), transparent 85%);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent 85%);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at center, transparent 48%, rgba(2, 6, 23, 0.34) 100%);
 }
 
 a {
   color: inherit;
+  text-decoration: none;
 }
 
 button,
@@ -75,6 +86,65 @@ select {
 }
 
 ::selection {
-  background: rgba(251, 146, 60, 0.28);
-  color: #fff7ed;
+  background: rgba(165, 180, 252, 0.32);
+  color: white;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #ffffff 0%, #c4b5fd 35%, #93c5fd 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.noise-overlay {
+  position: relative;
+}
+
+.noise-overlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.18;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.24) 0.6px, transparent 0.6px);
+  background-size: 14px 14px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.65), transparent 95%);
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+  animation: shimmer 1.6s linear infinite;
+}
+
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.toast-enter {
+  animation: toast-in 180ms ease-out;
 }
