@@ -659,7 +659,7 @@ export default function App() {
     <div className="min-h-screen text-slate-100">
       <ToastStack onDismiss={dismissToast} toasts={toasts} />
 
-      <main className="relative mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+      <main className="relative mx-auto max-w-[1200px] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
         <header className="sticky top-4 z-40 mb-8">
           <Card tone="soft" padding="sm" className="border-white/10 px-4 py-3 sm:px-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -744,3 +744,4 @@ export default function App() {
     </div>
   );
 }
+

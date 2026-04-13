@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 
 function ProgressiveText({ animate, text }) {
@@ -26,7 +27,7 @@ function ProgressiveText({ animate, text }) {
       if (nextIndex >= words.length) {
         window.clearInterval(intervalId);
       }
-    }, 40);
+    }, 38);
 
     return () => window.clearInterval(intervalId);
   }, [animate, text]);
@@ -36,7 +37,7 @@ function ProgressiveText({ animate, text }) {
   return (
     <span>
       {visibleText}
-      {isAnimating && <span className="ml-1 inline-block h-4 w-2 animate-pulse rounded-sm bg-violet-200/80 align-middle" />}
+      {isAnimating ? <span className="ml-1 inline-block h-4 w-2 animate-pulse rounded-sm bg-violet-200/80 align-middle" /> : null}
     </span>
   );
 }
@@ -45,9 +46,14 @@ export default function ChatBubble({ message }) {
   const isUser = message.role === 'user';
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <motion.div
+      animate={{ opacity: 1, y: 0 }}
+      className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
+      initial={{ opacity: 0, y: 14 }}
+      transition={{ duration: 0.24, ease: 'easeOut' }}
+    >
       <div
-        className={`max-w-[88%] rounded-[24px] px-4 py-3 shadow-[0_16px_35px_rgba(2,6,23,0.18)] sm:max-w-[78%] ${
+        className={`max-w-[92%] rounded-[24px] px-4 py-3 shadow-[0_16px_35px_rgba(2,6,23,0.18)] sm:max-w-[78%] ${
           isUser
             ? 'border border-violet-300/20 bg-[linear-gradient(135deg,rgba(99,102,241,0.92),rgba(168,85,247,0.92))] text-white'
             : 'border border-white/10 bg-slate-950/80 text-slate-100'
@@ -60,6 +66,6 @@ export default function ChatBubble({ message }) {
           <ProgressiveText animate={Boolean(message.animate && !isUser)} text={message.content} />
         </p>
       </div>
-    </div>
+    </motion.div>
   );
 }
