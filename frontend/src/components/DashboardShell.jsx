@@ -89,6 +89,23 @@ function getItems(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function normalizeRoadmapData(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+}
+
 function shortenText(text, maxLength = 150) {
   const normalizedText = String(text || '').trim();
 
@@ -200,9 +217,10 @@ export default function DashboardShell({
   const [activeTab, setActiveTab] = useState('tasks');
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
 
-  const timelineItems = getItems(roadmapData.timeline);
-  const milestoneItems = getItems(roadmapData.milestones);
-  const detailData = roadmapData?.details || roadmapData || {};
+  const normalizedRoadmapData = normalizeRoadmapData(roadmapData);
+  const timelineItems = getItems(normalizedRoadmapData.timeline);
+  const milestoneItems = getItems(normalizedRoadmapData.milestones);
+  const detailData = normalizedRoadmapData?.details || normalizedRoadmapData || {};
   const contentMap = {
     tasks: getItems(detailData.tasks),
     risks: getItems(detailData.risks),
@@ -212,7 +230,7 @@ export default function DashboardShell({
   const riskItems = contentMap.risks;
   const toolItems = contentMap.tools;
   const currentItems = contentMap[activeTab] || [];
-  const roadmapSummary = String(roadmapData.summary || '').trim();
+  const roadmapSummary = String(normalizedRoadmapData.summary || '').trim();
   const summaryPreview = isSummaryExpanded ? roadmapSummary : shortenText(roadmapSummary, 240);
   const canExpandSummary = roadmapSummary.length > 240;
   const roadmapMetrics = [
@@ -221,6 +239,9 @@ export default function DashboardShell({
     { label: 'Risks', value: riskItems.length },
     { label: 'Tools', value: toolItems.length },
   ];
+
+  console.log('activeTab:', activeTab);
+  console.log('roadmapData:', roadmapData);
 
   return (
     <motion.div animate="show" className="space-y-[72px] pb-16" initial="hidden" variants={containerMotion}>
@@ -580,82 +601,57 @@ export default function DashboardShell({
                 <Tabs items={roadmapTabs} onChange={setActiveTab} value={activeTab} />
 
                 <AnimatePresence mode="wait">
-                  {activeTab === 'tasks' ? (
-                    <motion.div animate={{ opacity: 1, y: 0 }} className="space-y-3" initial={{ opacity: 0, y: 10 }} key="tasks" transition={{ duration: 0.2, ease: 'easeOut' }}>
-                      {currentItems.length ? (
-                        currentItems.map((task, index) => {
-                          const itemTitle =
-                            typeof task === 'string' ? task : task?.title || task?.name || `Task ${index + 1}`;
-                          const itemDescription =
-                            typeof task === 'string'
-                              ? task
-                              : task?.details || task?.description || JSON.stringify(task);
-
-                          return (
-                          <RoadmapDetailCard
-                            accent="violet"
-                            badge={typeof task === 'object' && task !== null ? task.priority : undefined}
-                            description={shortenText(itemDescription, 160)}
-                            key={`${itemTitle}-${index}`}
-                            title={itemTitle}
-                            token="Task"
-                          />
-                          );
-                        })
-                      ) : (
-                        <p className="text-gray-400">No data available</p>
-                      )}
-                    </motion.div>
-                  ) : null}
-
-                  {activeTab === 'risks' ? (
-                    <motion.div animate={{ opacity: 1, y: 0 }} className="space-y-3" initial={{ opacity: 0, y: 10 }} key="risks" transition={{ duration: 0.2, ease: 'easeOut' }}>
-                      {currentItems.length ? (
-                        currentItems.map((riskItem, index) => {
-                          const riskTitle =
-                            typeof riskItem === 'string' ? riskItem : riskItem?.risk || riskItem?.title || `Risk ${index + 1}`;
-                          const riskDescription =
-                            typeof riskItem === 'string'
-                              ? riskItem
-                              : riskItem?.mitigation || riskItem?.description || JSON.stringify(riskItem);
-
-                          return (
-                          <RoadmapDetailCard
-                            accent="rose"
-                            badge="Mitigate"
-                            badgeTone="warning"
-                            description={shortenText(riskDescription, 160)}
-                            key={`${riskTitle}-${index}`}
-                            title={riskTitle}
-                            token="Risk"
-                          />
-                          );
-                        })
-                      ) : (
-                        <p className="text-gray-400">No data available</p>
-                      )}
-                    </motion.div>
-                  ) : null}
-
-                  {activeTab === 'tools' ? (
-                    <motion.div animate={{ opacity: 1, y: 0 }} className="grid gap-3 md:grid-cols-2" initial={{ opacity: 0, y: 10 }} key="tools" transition={{ duration: 0.2, ease: 'easeOut' }}>
-                      {currentItems.length ? (
-                        currentItems.map((tool, index) => {
+                  <motion.div
+                    animate={{ opacity: 1, y: 0 }}
+                    className={activeTab === 'tools' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}
+                    initial={{ opacity: 0, y: 10 }}
+                    key={activeTab}
+                    transition={{ duration: 0.2, ease: 'easeOut' }}
+                  >
+                    {currentItems.length === 0 ? (
+                      <p className={activeTab === 'tools' ? 'text-gray-400 md:col-span-2' : 'text-gray-400'}>No data available</p>
+                    ) : (
+                      currentItems.map((item, index) => {
+                        if (activeTab === 'tools') {
                           const normalizedTool =
-                            typeof tool === 'string'
-                              ? { name: tool, reason: tool }
+                            typeof item === 'string'
+                              ? { name: item, reason: item }
                               : {
-                                  name: tool?.name || tool?.title || `Tool ${index + 1}`,
-                                  reason: tool?.reason || tool?.description || JSON.stringify(tool),
+                                  name: item?.name || item?.title || `Tool ${index + 1}`,
+                                  reason: item?.reason || item?.description || JSON.stringify(item),
                                 };
 
                           return <ToolBadgeCard key={`${normalizedTool.name}-${index}`} tool={normalizedTool} />;
-                        })
-                      ) : (
-                        <p className="text-gray-400 md:col-span-2">No data available</p>
-                      )}
-                    </motion.div>
-                  ) : null}
+                        }
+
+                        const title =
+                          typeof item === 'string'
+                            ? item
+                            : activeTab === 'risks'
+                              ? item?.risk || item?.title || `Risk ${index + 1}`
+                              : item?.title || item?.name || `Task ${index + 1}`;
+
+                        const description =
+                          typeof item === 'string'
+                            ? item
+                            : activeTab === 'risks'
+                              ? item?.mitigation || item?.description || JSON.stringify(item)
+                              : item?.details || item?.description || JSON.stringify(item);
+
+                        return (
+                          <RoadmapDetailCard
+                            accent={activeTab === 'risks' ? 'rose' : 'violet'}
+                            badge={activeTab === 'risks' ? 'Mitigate' : typeof item === 'object' && item !== null ? item.priority : undefined}
+                            badgeTone={activeTab === 'risks' ? 'warning' : 'neutral'}
+                            description={shortenText(description, 160)}
+                            key={`${title}-${index}`}
+                            title={title}
+                            token={activeTab === 'risks' ? 'Risk' : 'Task'}
+                          />
+                        );
+                      })
+                    )}
+                  </motion.div>
                 </AnimatePresence>
               </div>
             </motion.div>
