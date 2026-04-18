@@ -598,21 +598,62 @@ export default function DashboardShell({
                   <p className="mt-2 text-sm leading-6 text-slate-400">Switch focus without losing the roadmap context above.</p>
                 </div>
 
-                <Tabs items={roadmapTabs} onChange={setActiveTab} value={activeTab} />
-
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    animate={{ opacity: 1, y: 0 }}
-                    className={activeTab === 'tools' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}
-                    initial={{ opacity: 0, y: 10 }}
-                    key={activeTab}
-                    transition={{ duration: 0.2, ease: 'easeOut' }}
-                  >
-                    {currentItems.length === 0 ? (
-                      <p className={activeTab === 'tools' ? 'text-gray-400 md:col-span-2' : 'text-gray-400'}>No data available</p>
+                <div className="space-y-6">
+                  <div className="space-y-3">
+                    <h4 className="text-base font-semibold text-white">Tasks</h4>
+                    {taskItems.length === 0 ? (
+                      <p className="text-gray-400">No tasks available</p>
                     ) : (
-                      currentItems.map((item, index) => {
-                        if (activeTab === 'tools') {
+                      taskItems.map((item, index) => {
+                        const title = typeof item === 'string' ? item : item?.title || item?.name || `Task ${index + 1}`;
+                        const description =
+                          typeof item === 'string' ? item : item?.details || item?.description || JSON.stringify(item);
+
+                        return (
+                          <RoadmapDetailCard
+                            accent="violet"
+                            description={description}
+                            key={`task-${index}`}
+                            title={title}
+                            token="Task"
+                          />
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <h4 className="text-base font-semibold text-white">Risks</h4>
+                    {riskItems.length === 0 ? (
+                      <p className="text-gray-400">No risks available</p>
+                    ) : (
+                      riskItems.map((item, index) => {
+                        const title = typeof item === 'string' ? item : item?.risk || item?.title || `Risk ${index + 1}`;
+                        const description =
+                          typeof item === 'string' ? item : item?.mitigation || item?.description || JSON.stringify(item);
+
+                        return (
+                          <RoadmapDetailCard
+                            accent="rose"
+                            badge="Mitigate"
+                            badgeTone="warning"
+                            description={description}
+                            key={`risk-${index}`}
+                            title={title}
+                            token="Risk"
+                          />
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <h4 className="text-base font-semibold text-white">Tools</h4>
+                    {toolItems.length === 0 ? (
+                      <p className="text-gray-400">No tools available</p>
+                    ) : (
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {toolItems.map((item, index) => {
                           const normalizedTool =
                             typeof item === 'string'
                               ? { name: item, reason: item }
@@ -621,38 +662,12 @@ export default function DashboardShell({
                                   reason: item?.reason || item?.description || JSON.stringify(item),
                                 };
 
-                          return <ToolBadgeCard key={`${normalizedTool.name}-${index}`} tool={normalizedTool} />;
-                        }
-
-                        const title =
-                          typeof item === 'string'
-                            ? item
-                            : activeTab === 'risks'
-                              ? item?.risk || item?.title || `Risk ${index + 1}`
-                              : item?.title || item?.name || `Task ${index + 1}`;
-
-                        const description =
-                          typeof item === 'string'
-                            ? item
-                            : activeTab === 'risks'
-                              ? item?.mitigation || item?.description || JSON.stringify(item)
-                              : item?.details || item?.description || JSON.stringify(item);
-
-                        return (
-                          <RoadmapDetailCard
-                            accent={activeTab === 'risks' ? 'rose' : 'violet'}
-                            badge={activeTab === 'risks' ? 'Mitigate' : typeof item === 'object' && item !== null ? item.priority : undefined}
-                            badgeTone={activeTab === 'risks' ? 'warning' : 'neutral'}
-                            description={shortenText(description, 160)}
-                            key={`${title}-${index}`}
-                            title={title}
-                            token={activeTab === 'risks' ? 'Risk' : 'Task'}
-                          />
-                        );
-                      })
+                          return <ToolBadgeCard key={`tool-${index}`} tool={normalizedTool} />;
+                        })}
+                      </div>
                     )}
-                  </motion.div>
-                </AnimatePresence>
+                  </div>
+                </div>
               </div>
             </motion.div>
           )}
