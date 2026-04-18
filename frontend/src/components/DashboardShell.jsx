@@ -202,9 +202,16 @@ export default function DashboardShell({
 
   const timelineItems = getItems(roadmapData.timeline);
   const milestoneItems = getItems(roadmapData.milestones);
-  const taskItems = getItems(roadmapData.tasks);
-  const riskItems = getItems(roadmapData.risks);
-  const toolItems = getItems(roadmapData.tools);
+  const detailData = roadmapData?.details || roadmapData || {};
+  const contentMap = {
+    tasks: getItems(detailData.tasks),
+    risks: getItems(detailData.risks),
+    tools: getItems(detailData.tools),
+  };
+  const taskItems = contentMap.tasks;
+  const riskItems = contentMap.risks;
+  const toolItems = contentMap.tools;
+  const currentItems = contentMap[activeTab] || [];
   const roadmapSummary = String(roadmapData.summary || '').trim();
   const summaryPreview = isSummaryExpanded ? roadmapSummary : shortenText(roadmapSummary, 240);
   const canExpandSummary = roadmapSummary.length > 240;
@@ -575,51 +582,77 @@ export default function DashboardShell({
                 <AnimatePresence mode="wait">
                   {activeTab === 'tasks' ? (
                     <motion.div animate={{ opacity: 1, y: 0 }} className="space-y-3" initial={{ opacity: 0, y: 10 }} key="tasks" transition={{ duration: 0.2, ease: 'easeOut' }}>
-                      {taskItems.length ? (
-                        taskItems.map((task) => (
+                      {currentItems.length ? (
+                        currentItems.map((task, index) => {
+                          const itemTitle =
+                            typeof task === 'string' ? task : task?.title || task?.name || `Task ${index + 1}`;
+                          const itemDescription =
+                            typeof task === 'string'
+                              ? task
+                              : task?.details || task?.description || JSON.stringify(task);
+
+                          return (
                           <RoadmapDetailCard
                             accent="violet"
-                            badge={task.priority}
-                            description={shortenText(task.details, 160)}
-                            key={`${task.title}-${task.priority}`}
-                            title={task.title}
+                            badge={typeof task === 'object' && task !== null ? task.priority : undefined}
+                            description={shortenText(itemDescription, 160)}
+                            key={`${itemTitle}-${index}`}
+                            title={itemTitle}
                             token="Task"
                           />
-                        ))
+                          );
+                        })
                       ) : (
-                        <EmptyState compact title="No tasks yet" body="Tasks will appear here after roadmap generation." />
+                        <p className="text-gray-400">No data available</p>
                       )}
                     </motion.div>
                   ) : null}
 
                   {activeTab === 'risks' ? (
                     <motion.div animate={{ opacity: 1, y: 0 }} className="space-y-3" initial={{ opacity: 0, y: 10 }} key="risks" transition={{ duration: 0.2, ease: 'easeOut' }}>
-                      {riskItems.length ? (
-                        riskItems.map((riskItem) => (
+                      {currentItems.length ? (
+                        currentItems.map((riskItem, index) => {
+                          const riskTitle =
+                            typeof riskItem === 'string' ? riskItem : riskItem?.risk || riskItem?.title || `Risk ${index + 1}`;
+                          const riskDescription =
+                            typeof riskItem === 'string'
+                              ? riskItem
+                              : riskItem?.mitigation || riskItem?.description || JSON.stringify(riskItem);
+
+                          return (
                           <RoadmapDetailCard
                             accent="rose"
                             badge="Mitigate"
                             badgeTone="warning"
-                            description={shortenText(riskItem.mitigation, 160)}
-                            key={riskItem.risk}
-                            title={riskItem.risk}
+                            description={shortenText(riskDescription, 160)}
+                            key={`${riskTitle}-${index}`}
+                            title={riskTitle}
                             token="Risk"
                           />
-                        ))
+                          );
+                        })
                       ) : (
-                        <EmptyState compact title="No risks yet" body="Risk guidance will appear here after roadmap generation." />
+                        <p className="text-gray-400">No data available</p>
                       )}
                     </motion.div>
                   ) : null}
 
                   {activeTab === 'tools' ? (
                     <motion.div animate={{ opacity: 1, y: 0 }} className="grid gap-3 md:grid-cols-2" initial={{ opacity: 0, y: 10 }} key="tools" transition={{ duration: 0.2, ease: 'easeOut' }}>
-                      {toolItems.length ? (
-                        toolItems.map((tool) => <ToolBadgeCard key={tool.name} tool={tool} />)
+                      {currentItems.length ? (
+                        currentItems.map((tool, index) => {
+                          const normalizedTool =
+                            typeof tool === 'string'
+                              ? { name: tool, reason: tool }
+                              : {
+                                  name: tool?.name || tool?.title || `Tool ${index + 1}`,
+                                  reason: tool?.reason || tool?.description || JSON.stringify(tool),
+                                };
+
+                          return <ToolBadgeCard key={`${normalizedTool.name}-${index}`} tool={normalizedTool} />;
+                        })
                       ) : (
-                        <div className="md:col-span-2">
-                          <EmptyState compact title="No tools yet" body="Tool recommendations will appear here after roadmap generation." />
-                        </div>
+                        <p className="text-gray-400 md:col-span-2">No data available</p>
                       )}
                     </motion.div>
                   ) : null}
