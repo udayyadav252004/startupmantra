@@ -147,18 +147,18 @@ function RoadmapDetailCard({ accent = 'violet', badge, badgeTone = 'neutral', de
 
   return (
     <motion.div variants={itemMotion}>
-      <div className="rounded-[18px] border border-white/10 bg-white/[0.04] p-4 transition hover:border-white/14 hover:bg-white/[0.06] hover:shadow-[0_18px_42px_rgba(2,6,23,0.16)]">
+      <div className="rounded-[18px] border border-white/10 bg-white dark:bg-white/[0.04] p-4 transition hover:border-white/14 hover:bg-white/[0.06] hover:shadow-[0_18px_42px_rgba(2,6,23,0.16)]">
         <div className="flex items-start gap-4">
           <span className={`mt-1 h-10 w-1 rounded-full ${accentBarClass}`} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-violet-200/80">{token}</p>
-                <h4 className="mt-2 text-base font-semibold text-white">{title}</h4>
+                <h4 className="mt-2 text-base font-semibold text-gray-900 dark:text-white">{title}</h4>
               </div>
               {badge ? <StatusBadge tone={badgeTone}>{badge}</StatusBadge> : null}
             </div>
-            <p className="mt-2 text-sm leading-6 text-slate-300">{description}</p>
+            <p className="mt-2 text-sm leading-6 text-gray-700 dark:text-slate-300">{description}</p>
           </div>
         </div>
       </div>
@@ -173,7 +173,7 @@ function ToolBadgeCard({ tool }) {
         <span className="inline-flex rounded-full border border-cyan-300/20 bg-slate-950/60 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
           {tool.name}
         </span>
-        <p className="mt-3 text-sm leading-6 text-slate-300">{shortenText(tool.reason, 110)}</p>
+        <p className="mt-3 text-sm leading-6 text-gray-700 dark:text-slate-300">{shortenText(tool.reason, 110)}</p>
       </div>
     </motion.div>
   );
