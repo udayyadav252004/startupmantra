@@ -1,7 +1,7 @@
 const express = require('express');
 
 const { getDb } = require('../config/firebase');
-const { authenticateFirebaseUser } = require('../middleware/firebaseAuth');
+const { attachFirebaseUserIfPresent } = require('../middleware/firebaseAuth');
 const {
   buildMockFallbackData,
   generateAIResponse,
@@ -13,7 +13,7 @@ const { buildMentorPrompt, normalizeChatHistory } = require('../prompts/chatProm
 const router = express.Router();
 const IDEAS_COLLECTION = 'ideas';
 
-router.use(authenticateFirebaseUser);
+router.use(attachFirebaseUserIfPresent);
 
 async function getIdeaContextFromStore(ideaId, userId) {
   if (!ideaId) {
@@ -56,6 +56,12 @@ router.post('/', async (req, res) => {
   let ideaContextBody = req.body || {};
 
   if (!directIdeaSummary && ideaId) {
+    if (!req.firebaseUser) {
+      return res.status(401).json({
+        message: 'Login required to use a saved idea in mentor chat.',
+      });
+    }
+
     try {
       const storedIdea = await getIdeaContextFromStore(ideaId, req.firebaseUser.uid);
       ideaContextBody = {

@@ -3,7 +3,7 @@ const { randomUUID } = require('crypto');
 const express = require('express');
 
 const { getDb } = require('../config/firebase');
-const { authenticateFirebaseUser } = require('../middleware/firebaseAuth');
+const { attachFirebaseUserIfPresent } = require('../middleware/firebaseAuth');
 const {
   buildMockFallbackData,
   generateAIResponse,
@@ -15,7 +15,7 @@ const router = express.Router();
 const ROADMAPS_COLLECTION = 'roadmaps';
 const ROADMAP_SAVE_TIMEOUT_MS = 5000;
 
-router.use(authenticateFirebaseUser);
+router.use(attachFirebaseUserIfPresent);
 
 function buildRoadmapRecord(body, ideaSummary, promptUsed, model, roadmap, userId) {
   return {
@@ -51,6 +51,31 @@ async function saveRoadmapRecord(record) {
   }
 }
 
+async function buildRoadmapSaveResult(requestBody, ideaSummary, promptUsed, model, roadmap, firebaseUser) {
+  if (!firebaseUser?.uid) {
+    return {
+      savedRoadmap: null,
+      storageWarning: 'Login required to save',
+    };
+  }
+
+  const savedRoadmap = buildRoadmapRecord(
+    requestBody,
+    ideaSummary,
+    promptUsed,
+    model,
+    roadmap,
+    firebaseUser.uid
+  );
+
+  const storageWarning = await saveRoadmapRecord(savedRoadmap);
+
+  return {
+    savedRoadmap,
+    storageWarning,
+  };
+}
+
 router.post('/', async (req, res) => {
   const requestBody = req.body || {};
   const ideaSummary = buildIdeaSummary(requestBody);
@@ -82,47 +107,43 @@ router.post('/', async (req, res) => {
       fallbackContext,
     });
 
-    const savedRoadmap = buildRoadmapRecord(
+    const saveResult = await buildRoadmapSaveResult(
       requestBody,
       ideaSummary,
       promptUsed,
       aiResult.modelUsed,
       aiResult.data,
-      req.firebaseUser.uid
+      req.firebaseUser
     );
-
-    const storageWarning = await saveRoadmapRecord(savedRoadmap);
 
     return res.json({
       message: 'Roadmap generated successfully.',
       model: aiResult.modelUsed,
       promptUsed,
       roadmap: aiResult.data,
-      savedRoadmap,
-      storageWarning,
+      savedRoadmap: saveResult.savedRoadmap,
+      storageWarning: saveResult.storageWarning,
     });
   } catch (error) {
     logAiError('roadmap', error);
 
     const fallbackRoadmap = buildMockFallbackData('roadmap', fallbackContext);
-    const savedRoadmap = buildRoadmapRecord(
+    const saveResult = await buildRoadmapSaveResult(
       requestBody,
       ideaSummary,
       promptUsed,
       'fallback-system',
       fallbackRoadmap,
-      req.firebaseUser.uid
+      req.firebaseUser
     );
-
-    const storageWarning = await saveRoadmapRecord(savedRoadmap);
 
     return res.json({
       message: 'Roadmap generated successfully.',
       model: 'fallback-system',
       promptUsed,
       roadmap: fallbackRoadmap,
-      savedRoadmap,
-      storageWarning,
+      savedRoadmap: saveResult.savedRoadmap,
+      storageWarning: saveResult.storageWarning,
     });
   }
 });

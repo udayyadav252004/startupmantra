@@ -10,15 +10,16 @@ import {
   updateProfile,
 } from 'firebase/auth';
 
+import AuthModal from './components/AuthModal';
 import Button from './components/Button';
 import Card from './components/Card';
 import DashboardShell from './components/DashboardShell';
-import LandingShell from './components/LandingShell';
 import StatusBadge from './components/StatusBadge';
 import ToastStack from './components/ToastStack';
 import { auth, googleProvider, hasFirebaseConfig } from './firebase';
 
 const API = import.meta.env.VITE_API_URL;
+const draftIdeaId = 'draft-idea';
 const initialIdeaForm = { title: '', description: '', targetAudience: '', budget: '', experienceLevel: 'Beginner' };
 const initialAuthForm = { name: '', email: '', password: '' };
 const emptyRoadmap = { summary: '', timeline: [], milestones: [], tasks: [], risks: [], tools: [] };
@@ -71,13 +72,37 @@ async function getFirebaseSession({ requireVerified = true } = {}) {
   return { normalizedUser, token: await user.getIdToken(), user, userId: user.uid };
 }
 
+async function getOptionalFirebaseSession(options = {}) {
+  if (!hasFirebaseConfig || !auth || !auth.currentUser) {
+    return null;
+  }
+
+  try {
+    return await getFirebaseSession(options);
+  } catch (error) {
+    console.warn('[auth] Optional session unavailable.', error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
 async function fetchJson(url, options = {}, config = {}) {
-  const { includeUserIdInBody = false, includeUserIdInQuery = false, requireAuth = false } = config;
+  const {
+    includeAuthIfAvailable = false,
+    includeUserIdInBody = false,
+    includeUserIdInQuery = false,
+    requireAuth = false,
+  } = config;
   let requestUrl = buildApiUrl(url);
   const requestOptions = { ...options, credentials: 'include', headers: { ...(options.headers || {}) } };
+  let session = null;
 
   if (requireAuth) {
-    const session = await getFirebaseSession();
+    session = await getFirebaseSession();
+  } else if (includeAuthIfAvailable) {
+    session = await getOptionalFirebaseSession();
+  }
+
+  if (session) {
     requestOptions.headers.Authorization = `Bearer ${session.token}`;
 
     if (includeUserIdInQuery) {
@@ -149,6 +174,51 @@ function describeAuthError(error) {
   return error instanceof Error ? error.message : 'Something went wrong while authenticating.';
 }
 
+function sortNewestFirst(items) {
+  return [...items].sort((first, second) => String(second.createdAt || '').localeCompare(String(first.createdAt || '')));
+}
+
+function buildDraftIdea(form) {
+  const title = String(form.title || '').trim();
+  const description = String(form.description || '').trim();
+
+  if (!title && !description) {
+    return null;
+  }
+
+  const rawBudget = form.budget === '' ? undefined : Number(form.budget);
+  const budget = Number.isNaN(rawBudget) ? undefined : rawBudget;
+
+  return {
+    id: draftIdeaId,
+    title: title || 'Current draft',
+    description,
+    targetAudience: String(form.targetAudience || '').trim(),
+    budget,
+    experienceLevel: String(form.experienceLevel || '').trim() || 'Beginner',
+    isTemporary: true,
+  };
+}
+
+function mergeRoadmapsWithTemporary(currentRoadmaps, nextRoadmaps) {
+  const persistedRoadmaps = Array.isArray(nextRoadmaps) ? nextRoadmaps : [];
+  const temporaryRoadmaps = Array.isArray(currentRoadmaps)
+    ? currentRoadmaps.filter((roadmap) => roadmap?.isTemporary)
+    : [];
+  const seenIds = new Set();
+
+  return sortNewestFirst(
+    [...persistedRoadmaps, ...temporaryRoadmaps].filter((roadmap) => {
+      if (!roadmap?.id || seenIds.has(roadmap.id)) {
+        return false;
+      }
+
+      seenIds.add(roadmap.id);
+      return true;
+    })
+  );
+}
+
 export default function App() {
   const [ideaForm, setIdeaForm] = useState(initialIdeaForm);
   const [authForm, setAuthForm] = useState(initialAuthForm);
@@ -176,11 +246,15 @@ export default function App() {
   const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
   const [isSendingChat, setIsSendingChat] = useState(false);
   const [activeRoadmapIdeaId, setActiveRoadmapIdeaId] = useState('');
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalIntent, setAuthModalIntent] = useState('general');
   const [toasts, setToasts] = useState([]);
   const toastTimersRef = useRef(new Map());
 
   const backendOnline = String(backendStatus).toLowerCase().includes('running');
-  const selectedIdea = ideas.find((idea) => idea.id === selectedIdeaId) || ideas[0] || null;
+  const selectedSavedIdea = ideas.find((idea) => idea.id === selectedIdeaId) || null;
+  const draftIdea = buildDraftIdea(ideaForm);
+  const selectedIdea = selectedSavedIdea || draftIdea || ideas[0] || null;
   const selectedIdeaRoadmaps = selectedIdea ? roadmaps.filter((roadmap) => roadmap.ideaId === selectedIdea.id) : [];
   const selectedRoadmap = selectedIdeaRoadmaps.find((roadmap) => roadmap.id === selectedRoadmapId) || selectedIdeaRoadmaps[0] || null;
   const roadmapData = selectedRoadmap?.roadmap || emptyRoadmap;
@@ -217,26 +291,35 @@ export default function App() {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  function jumpToPrimaryAction() {
-    if (authUser) {
-      scrollToSection('idea-studio');
-      return;
-    }
-    setAuthMode('signup');
-    scrollToSection('auth-panel');
+  function openAuthModal(mode = 'login', intent = 'general') {
+    setAuthMode(mode);
+    setAuthModalIntent(intent);
+    setIsAuthModalOpen(true);
   }
 
-  function resetWorkspace() {
+  function closeAuthModal() {
+    setIsAuthModalOpen(false);
+    setAuthModalIntent('general');
+  }
+
+  function jumpToPrimaryAction() {
+    scrollToSection('idea-studio');
+  }
+
+  function clearPrivateWorkspace() {
     setIdeas([]);
-    setRoadmaps([]);
-    setGeneratedIdeas([]);
-    setChatSessions({});
+    setRoadmaps((current) => current.filter((roadmap) => roadmap.isTemporary));
+    setChatSessions((current) => {
+      if (current[draftIdeaId]) {
+        return { [draftIdeaId]: current[draftIdeaId] };
+      }
+
+      return {};
+    });
     setSelectedIdeaId('');
     setSelectedRoadmapId('');
     setChatInput('');
     setChatError('');
-    setIdeaForm(initialIdeaForm);
-    setIdeaFieldErrors({});
     setDashboardError('');
   }
 
@@ -269,13 +352,17 @@ export default function App() {
     }
 
     if (roadmapsResult.status === 'fulfilled') {
-      setRoadmaps(Array.isArray(roadmapsResult.value.roadmaps) ? roadmapsResult.value.roadmaps : []);
+      const nextRoadmaps = Array.isArray(roadmapsResult.value.roadmaps) ? roadmapsResult.value.roadmaps : [];
+      setRoadmaps((current) => mergeRoadmapsWithTemporary(current, nextRoadmaps));
     } else {
-      setRoadmaps([]);
+      setRoadmaps((current) => mergeRoadmapsWithTemporary(current, []));
       errors.push(roadmapsResult.reason.message || 'Could not load roadmaps.');
     }
 
-    if (errors.length) setDashboardError(errors.join(' '));
+    if (errors.length) {
+      setDashboardError(errors.join(' '));
+    }
+
     setIsRefreshing(false);
   }
 
@@ -283,7 +370,7 @@ export default function App() {
     let isMounted = true;
 
     if (!hasFirebaseConfig || !auth) {
-      setAuthError('Firebase Auth is not configured. Add your VITE_FIREBASE_* values to unlock the product experience.');
+      setAuthError('Firebase Auth is not configured. Add your VITE_FIREBASE_* values to unlock saved work.');
       setIsCheckingSession(false);
       loadDashboard({ includePrivateData: false });
       return undefined;
@@ -295,7 +382,7 @@ export default function App() {
 
       if (!user) {
         setAuthUser(null);
-        resetWorkspace();
+        clearPrivateWorkspace();
         await loadDashboard({ includePrivateData: false });
         if (isMounted) setIsCheckingSession(false);
         return;
@@ -310,7 +397,7 @@ export default function App() {
           await firebaseSignOut(auth);
           if (!isMounted) return;
           setAuthUser(null);
-          resetWorkspace();
+          clearPrivateWorkspace();
           setAuthError('Please verify your email before using StartupMantra.');
           await loadDashboard({ includePrivateData: false });
           return;
@@ -324,7 +411,7 @@ export default function App() {
         if (!isMounted) return;
         console.error('[auth] Could not restore Firebase session.', error);
         setAuthUser(null);
-        resetWorkspace();
+        clearPrivateWorkspace();
         setAuthError(error instanceof Error ? error.message : 'Could not restore your session.');
         await loadDashboard({ includePrivateData: false });
       } finally {
@@ -339,27 +426,24 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!ideas.length) {
+    if (selectedIdeaId && !ideas.some((idea) => idea.id === selectedIdeaId)) {
       setSelectedIdeaId('');
-      return;
-    }
-    if (!ideas.some((idea) => idea.id === selectedIdeaId)) {
-      setSelectedIdeaId(ideas[0].id);
     }
   }, [ideas, selectedIdeaId]);
 
   useEffect(() => {
-    if (!selectedIdea || !selectedIdeaRoadmaps.length) {
+    if (!selectedIdeaRoadmaps.length) {
       setSelectedRoadmapId('');
       return;
     }
+
     if (!selectedIdeaRoadmaps.some((roadmap) => roadmap.id === selectedRoadmapId)) {
       setSelectedRoadmapId(selectedIdeaRoadmaps[0].id);
     }
-  }, [selectedIdea, selectedIdeaRoadmaps, selectedRoadmapId]);
+  }, [selectedIdeaRoadmaps, selectedRoadmapId]);
 
   useEffect(() => {
-    if (!selectedIdea) return;
+    if (!selectedIdea?.id) return;
     setChatSessions((current) => {
       if (current[selectedIdea.id]) return current;
       return {
@@ -367,11 +451,11 @@ export default function App() {
         [selectedIdea.id]: [{ animate: false, content: createMentorIntro(selectedIdea.title), id: createId('mentor'), role: 'assistant' }],
       };
     });
-  }, [selectedIdea]);
+  }, [selectedIdea?.id, selectedIdea?.title]);
 
   useEffect(() => {
     setChatError('');
-  }, [selectedIdeaId]);
+  }, [selectedIdea?.id]);
 
   useEffect(() => {
     setAuthMessage('');
@@ -400,20 +484,30 @@ export default function App() {
   function handleSelectRoadmap(roadmapId) {
     const matchingRoadmap = roadmaps.find((roadmap) => roadmap.id === roadmapId);
     if (!matchingRoadmap) return;
-    setSelectedIdeaId(matchingRoadmap.ideaId);
+    if (matchingRoadmap.ideaId && matchingRoadmap.ideaId !== draftIdeaId) {
+      setSelectedIdeaId(matchingRoadmap.ideaId);
+    }
     setSelectedRoadmapId(matchingRoadmap.id);
   }
 
   function handleUseGeneratedIdea(idea) {
     setIdeaForm({ title: idea.title, description: idea.explanation, targetAudience: '', budget: '', experienceLevel: 'Beginner' });
     setIdeaFieldErrors({});
-    pushToast({ tone: 'success', title: 'Idea loaded into your draft', description: 'Add your target audience and budget, then save it into the workspace.' });
+    setSelectedIdeaId('');
+    setSelectedRoadmapId('');
+    pushToast({ tone: 'success', title: 'Idea loaded into your draft', description: 'Add your target audience and budget, then keep exploring or save it when you are ready.' });
     scrollToSection('idea-capture');
   }
 
   async function handleRefreshWorkspace() {
     await loadDashboard({ includePrivateData: Boolean(authUser) });
-    pushToast({ tone: backendOnline ? 'success' : 'info', title: 'Workspace refreshed', description: backendOnline ? 'Your private ideas and roadmaps are up to date.' : 'We refreshed what we could, but the backend health check still needs attention.' });
+    pushToast({
+      tone: backendOnline ? 'success' : 'info',
+      title: 'Workspace refreshed',
+      description: authUser
+        ? 'Your saved ideas and roadmap history are up to date.'
+        : 'Guest mode is ready. Your current work stays temporary until you save it.',
+    });
   }
 
   async function handleSignOut() {
@@ -424,7 +518,7 @@ export default function App() {
 
     try {
       await firebaseSignOut(auth);
-      pushToast({ tone: 'info', title: 'Signed out', description: 'Your private workspace has been closed on this device.' });
+      pushToast({ tone: 'info', title: 'Signed out', description: 'You can keep exploring in guest mode. Save will ask you to log in again.' });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not sign out right now.';
       setAuthError(message);
@@ -445,7 +539,8 @@ export default function App() {
     try {
       await signInWithPopup(auth, googleProvider);
       setAuthForm(initialAuthForm);
-      pushToast({ tone: 'success', title: 'Welcome to StartupMantra', description: 'Your Google account is ready and your workspace is loading.' });
+      closeAuthModal();
+      pushToast({ tone: 'success', title: 'Welcome to StartupMantra', description: 'Your Google account is ready and your saved workspace is loading.' });
     } catch (error) {
       const message = describeAuthError(error);
       setAuthError(message);
@@ -509,7 +604,8 @@ export default function App() {
       }
 
       setAuthForm(initialAuthForm);
-      setAuthMessage('Welcome back. Loading your private workspace now.');
+      setAuthMessage('Welcome back. Your saved workspace is loading now.');
+      closeAuthModal();
       pushToast({ tone: 'success', title: 'Signed in successfully', description: 'Your verified workspace is ready.' });
     } catch (error) {
       const message = describeAuthError(error);
@@ -524,11 +620,6 @@ export default function App() {
     event.preventDefault();
     const category = generatorCategory.trim();
 
-    if (!authUser) {
-      pushToast({ tone: 'error', title: 'Sign in first', description: 'Use a verified account before generating startup ideas.' });
-      return;
-    }
-
     if (!category) {
       pushToast({ tone: 'error', title: 'Choose a category', description: 'Pick a startup category before asking the AI for ideas.' });
       return;
@@ -538,7 +629,11 @@ export default function App() {
     const loadingToastId = pushToast({ tone: 'loading', title: 'Generating startup ideas', description: 'Looking for founder-friendly directions with stronger market wedges.', persistent: true });
 
     try {
-      const data = await fetchJson('/generate-ideas', { body: JSON.stringify({ category }), headers: { 'Content-Type': 'application/json' }, method: 'POST' }, { includeUserIdInBody: true, requireAuth: true });
+      const data = await fetchJson(
+        '/generate-ideas',
+        { body: JSON.stringify({ category }), headers: { 'Content-Type': 'application/json' }, method: 'POST' },
+        { includeAuthIfAvailable: Boolean(authUser), includeUserIdInBody: true }
+      );
       const nextIdeas = Array.isArray(data.result?.ideas) ? data.result.ideas : [];
       setGeneratedIdeas(nextIdeas);
       dismissToast(loadingToastId);
@@ -556,7 +651,8 @@ export default function App() {
     event.preventDefault();
 
     if (!authUser) {
-      pushToast({ tone: 'error', title: 'Sign in first', description: 'Use a verified account before saving an idea.' });
+      openAuthModal('login', 'save');
+      pushToast({ tone: 'info', title: 'Login required to save', description: 'Your draft stays on screen. Sign in when you want to keep it.' });
       return;
     }
 
@@ -571,7 +667,11 @@ export default function App() {
     const loadingToastId = pushToast({ tone: 'loading', title: 'Saving idea', description: 'Adding this startup concept to your private workspace.', persistent: true });
 
     try {
-      const data = await fetchJson('/api/ideas', { body: JSON.stringify(ideaForm), headers: { 'Content-Type': 'application/json' }, method: 'POST' }, { includeUserIdInBody: true, requireAuth: true });
+      const data = await fetchJson(
+        '/api/ideas',
+        { body: JSON.stringify(ideaForm), headers: { 'Content-Type': 'application/json' }, method: 'POST' },
+        { includeUserIdInBody: true, requireAuth: true }
+      );
       setIdeas((current) => [data.idea, ...current.filter((idea) => idea.id !== data.idea.id)]);
       setSelectedIdeaId(data.idea.id);
       setIdeaForm(initialIdeaForm);
@@ -587,22 +687,52 @@ export default function App() {
   }
 
   async function handleGenerateRoadmap(idea) {
-    if (!authUser) {
-      pushToast({ tone: 'error', title: 'Sign in first', description: 'Use a verified account before generating a roadmap.' });
+    if (!idea) {
+      pushToast({ tone: 'error', title: 'Add an idea first', description: 'Start with a draft or select a saved idea before generating a roadmap.' });
       return;
     }
 
     setActiveRoadmapIdeaId(idea.id);
     const loadingToastId = pushToast({ tone: 'loading', title: 'Generating roadmap', description: 'Sequencing milestones, tasks, tools, and risks for this idea.', persistent: true });
+    const shouldSaveRoadmapHistory = Boolean(authUser && idea.id && idea.id !== draftIdeaId);
 
     try {
-      const data = await fetchJson('/generate-roadmap', { body: JSON.stringify({ budget: idea.budget, description: idea.description, experienceLevel: idea.experienceLevel, ideaId: idea.id, targetAudience: idea.targetAudience, title: idea.title }), headers: { 'Content-Type': 'application/json' }, method: 'POST' }, { includeUserIdInBody: true, requireAuth: true });
-      const roadmapRecord = data.savedRoadmap || { createdAt: new Date().toISOString(), id: createId('generated-roadmap'), ideaId: idea.id, ideaTitle: idea.title, model: data.model, roadmap: data.roadmap };
-      setRoadmaps((current) => [roadmapRecord, ...current.filter((item) => item.id !== roadmapRecord.id)]);
-      setSelectedIdeaId(idea.id);
+      const data = await fetchJson(
+        '/generate-roadmap',
+        {
+          body: JSON.stringify({
+            budget: idea.budget,
+            description: idea.description,
+            experienceLevel: idea.experienceLevel,
+            ideaId: idea.id,
+            targetAudience: idea.targetAudience,
+            title: idea.title,
+          }),
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+        },
+        { includeAuthIfAvailable: shouldSaveRoadmapHistory, includeUserIdInBody: true }
+      );
+
+      const roadmapRecord = data.savedRoadmap || {
+        createdAt: new Date().toISOString(),
+        id: createId('generated-roadmap'),
+        ideaId: idea.id || draftIdeaId,
+        ideaTitle: idea.title || 'Current draft',
+        isTemporary: true,
+        model: data.model,
+        roadmap: data.roadmap,
+      };
+
+      setRoadmaps((current) => sortNewestFirst([roadmapRecord, ...current.filter((item) => item.id !== roadmapRecord.id)]));
+      setSelectedIdeaId(idea.id && idea.id !== draftIdeaId ? idea.id : '');
       setSelectedRoadmapId(roadmapRecord.id);
       dismissToast(loadingToastId);
-      pushToast({ tone: data.storageWarning ? 'info' : 'success', title: 'Roadmap ready', description: data.storageWarning || 'Your execution plan is now available in the workspace.' });
+      pushToast({
+        tone: data.storageWarning ? 'info' : 'success',
+        title: 'Roadmap ready',
+        description: data.storageWarning || 'Your execution plan is now available in the workspace.',
+      });
     } catch (error) {
       dismissToast(loadingToastId);
       pushToast({ tone: 'error', title: 'Could not generate roadmap', description: error instanceof Error ? error.message : 'Something went wrong while generating the roadmap.' });
@@ -613,14 +743,9 @@ export default function App() {
 
   async function handleChatSubmit(event) {
     event.preventDefault();
-    if (!authUser) {
-      const message = 'Use a verified account before using mentor chat.';
-      setChatError(message);
-      pushToast({ tone: 'error', title: 'Sign in first', description: message });
-      return;
-    }
+
     if (!selectedIdea) {
-      setChatError('Select or save an idea before chatting with the mentor.');
+      setChatError('Add a draft or choose an idea before chatting with the mentor.');
       return;
     }
 
@@ -641,7 +766,25 @@ export default function App() {
     setChatSessions((current) => ({ ...current, [activeIdeaId]: [...(current[activeIdeaId] || []), userMessage] }));
 
     try {
-      const data = await fetchJson('/chat', { body: JSON.stringify({ budget: selectedIdea.budget, description: selectedIdea.description, experienceLevel: selectedIdea.experienceLevel, history: currentMessages.map((message) => ({ content: message.content, role: message.role })), ideaId: selectedIdea.id, question, roadmap: roadmapForChat, targetAudience: selectedIdea.targetAudience, title: selectedIdea.title }), headers: { 'Content-Type': 'application/json' }, method: 'POST' }, { includeUserIdInBody: true, requireAuth: true });
+      const data = await fetchJson(
+        '/chat',
+        {
+          body: JSON.stringify({
+            budget: selectedIdea.budget,
+            description: selectedIdea.description,
+            experienceLevel: selectedIdea.experienceLevel,
+            history: currentMessages.map((message) => ({ content: message.content, role: message.role })),
+            ideaId: selectedIdea.id === draftIdeaId ? '' : selectedIdea.id,
+            question,
+            roadmap: roadmapForChat,
+            targetAudience: selectedIdea.targetAudience,
+            title: selectedIdea.title,
+          }),
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+        },
+        { includeAuthIfAvailable: Boolean(authUser), includeUserIdInBody: true }
+      );
       const assistantMessage = { animate: true, content: data.answer, id: createId('assistant'), role: 'assistant' };
       setChatSessions((current) => ({ ...current, [activeIdeaId]: [...(current[activeIdeaId] || []), assistantMessage] }));
     } catch (error) {
@@ -658,26 +801,48 @@ export default function App() {
   return (
     <div className="min-h-screen text-slate-100">
       <ToastStack onDismiss={dismissToast} toasts={toasts} />
+      <AuthModal
+        authError={authError}
+        authFieldErrors={authFieldErrors}
+        authForm={authForm}
+        authMessage={authMessage}
+        authMode={authMode}
+        handleAuthChange={handleAuthChange}
+        handleAuthSubmit={handleAuthSubmit}
+        handleGoogleSignIn={handleGoogleSignIn}
+        hasFirebaseConfig={hasFirebaseConfig}
+        intent={authModalIntent}
+        isCheckingSession={isCheckingSession}
+        isOpen={isAuthModalOpen}
+        isSubmittingAuth={isSubmittingAuth}
+        onClose={closeAuthModal}
+        setAuthMode={setAuthMode}
+        showGoogleSignIn={Boolean(googleProvider)}
+      />
 
-      <main className="relative mx-auto max-w-[1200px] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
-        <header className="sticky top-4 z-40 mb-8">
-          <Card tone="soft" padding="sm" className="border-white/10 px-4 py-3 sm:px-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <main className="relative mx-auto max-w-[1100px] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+        <header className="sticky top-4 z-40 mb-10">
+          <Card tone="subtle" padding="sm" className="border-white/10 px-4 py-3 sm:px-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(99,102,241,0.95),rgba(168,85,247,0.95))] text-sm font-semibold tracking-[0.18em] text-white shadow-[0_16px_34px_rgba(79,70,229,0.38)]">SM</div>
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(99,102,241,0.95),rgba(168,85,247,0.95))] text-sm font-semibold tracking-[0.18em] text-white shadow-[0_16px_34px_rgba(79,70,229,0.38)]">SM</div>
                 <div>
                   <p className="text-lg font-semibold tracking-tight text-white">StartupMantra</p>
                   <p className="text-sm text-slate-400">Your Idea, Our Roadmap</p>
                 </div>
               </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+              <div className="flex flex-wrap gap-3 sm:items-center sm:justify-end">
                 {authUser ? (
-                  <StatusBadge tone="info">Private workspace active</StatusBadge>
+                  <>
+                    <StatusBadge tone="info">Workspace active</StatusBadge>
+                    <Button onClick={handleSignOut} size="sm" variant="ghost">Sign out</Button>
+                  </>
                 ) : (
                   <>
-                    <Button onClick={() => scrollToSection('product-flow')} size="sm" variant="secondary">How it works</Button>
-                    <Button onClick={jumpToPrimaryAction} size="sm">Generate Your First Idea</Button>
+                    <StatusBadge tone="neutral">Guest mode</StatusBadge>
+                    <Button onClick={() => openAuthModal('login')} size="sm" variant="secondary">Log in</Button>
+                    <Button onClick={() => openAuthModal('signup')} size="sm">Sign up</Button>
                   </>
                 )}
               </div>
@@ -685,63 +850,43 @@ export default function App() {
           </Card>
         </header>
 
-        {authUser ? (
-          <DashboardShell
-            activeRoadmapIdeaId={activeRoadmapIdeaId}
-            authUser={authUser}
-            backendOnline={backendOnline}
-            backendStatus={backendStatus}
-            chatError={chatError}
-            chatInput={chatInput}
-            chatMessages={chatMessages}
-            dashboardError={dashboardError}
-            generatedIdeas={generatedIdeas}
-            generatorCategory={generatorCategory}
-            handleChatSubmit={handleChatSubmit}
-            handleGenerateRoadmap={handleGenerateRoadmap}
-            handleIdeaFormChange={handleIdeaFormChange}
-            handleIdeaGeneratorSubmit={handleIdeaGeneratorSubmit}
-            handleRefreshWorkspace={handleRefreshWorkspace}
-            handleSelectIdea={handleSelectIdea}
-            handleSelectRoadmap={handleSelectRoadmap}
-            handleSignOut={handleSignOut}
-            handleSubmitIdea={handleSubmitIdea}
-            handleUseGeneratedIdea={handleUseGeneratedIdea}
-            ideaFieldErrors={ideaFieldErrors}
-            ideaForm={ideaForm}
-            ideas={ideas}
-            isGeneratingIdeas={isGeneratingIdeas}
-            isRefreshing={isRefreshing}
-            isSendingChat={isSendingChat}
-            isSubmittingIdea={isSubmittingIdea}
-            roadmapData={roadmapData}
-            selectedIdea={selectedIdea}
-            selectedIdeaRoadmaps={selectedIdeaRoadmaps}
-            selectedRoadmap={selectedRoadmap}
-            setChatInput={setChatInput}
-            setGeneratorCategory={setGeneratorCategory}
-          />
-        ) : (
-          <LandingShell
-            authError={authError}
-            authFieldErrors={authFieldErrors}
-            authForm={authForm}
-            authMessage={authMessage}
-            authMode={authMode}
-            handleAuthChange={handleAuthChange}
-            handleAuthSubmit={handleAuthSubmit}
-            handleGoogleSignIn={handleGoogleSignIn}
-            hasFirebaseConfig={hasFirebaseConfig}
-            isCheckingSession={isCheckingSession}
-            isSubmittingAuth={isSubmittingAuth}
-            jumpToPrimaryAction={jumpToPrimaryAction}
-            scrollToSection={scrollToSection}
-            setAuthMode={setAuthMode}
-            showGoogleSignIn={Boolean(googleProvider)}
-          />
-        )}
+        <DashboardShell
+          activeRoadmapIdeaId={activeRoadmapIdeaId}
+          authUser={authUser}
+          backendOnline={backendOnline}
+          backendStatus={backendStatus}
+          chatError={chatError}
+          chatInput={chatInput}
+          chatMessages={chatMessages}
+          dashboardError={dashboardError}
+          generatedIdeas={generatedIdeas}
+          generatorCategory={generatorCategory}
+          handleChatSubmit={handleChatSubmit}
+          handleGenerateRoadmap={handleGenerateRoadmap}
+          handleIdeaFormChange={handleIdeaFormChange}
+          handleIdeaGeneratorSubmit={handleIdeaGeneratorSubmit}
+          handleRefreshWorkspace={handleRefreshWorkspace}
+          handleSelectIdea={handleSelectIdea}
+          handleSelectRoadmap={handleSelectRoadmap}
+          handleSignOut={handleSignOut}
+          handleSubmitIdea={handleSubmitIdea}
+          handleUseGeneratedIdea={handleUseGeneratedIdea}
+          ideaFieldErrors={ideaFieldErrors}
+          ideaForm={ideaForm}
+          ideas={ideas}
+          isGeneratingIdeas={isGeneratingIdeas}
+          isGuestMode={!authUser}
+          isRefreshing={isRefreshing}
+          isSendingChat={isSendingChat}
+          isSubmittingIdea={isSubmittingIdea}
+          roadmapData={roadmapData}
+          selectedIdea={selectedIdea}
+          selectedIdeaRoadmaps={selectedIdeaRoadmaps}
+          selectedRoadmap={selectedRoadmap}
+          setChatInput={setChatInput}
+          setGeneratorCategory={setGeneratorCategory}
+        />
       </main>
     </div>
   );
 }
-

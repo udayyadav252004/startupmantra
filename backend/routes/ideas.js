@@ -3,12 +3,13 @@ const { randomUUID } = require('crypto');
 const express = require('express');
 
 const { getDb } = require('../config/firebase');
-const { authenticateFirebaseUser } = require('../middleware/firebaseAuth');
+const { attachFirebaseUserIfPresent, requireFirebaseUser } = require('../middleware/firebaseAuth');
 
 const router = express.Router();
 const IDEAS_COLLECTION = 'ideas';
 
-router.use(authenticateFirebaseUser);
+router.use(attachFirebaseUserIfPresent);
+router.use(requireFirebaseUser);
 
 function buildIdeaPayload(body, userId) {
   return {

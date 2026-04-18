@@ -1,6 +1,7 @@
 import { cx } from './ui';
 
 const toneClasses = {
+  none: '',
   default:
     'border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.88),rgba(15,23,42,0.74))] shadow-[0_24px_60px_rgba(2,6,23,0.35)]',
   soft:
@@ -9,6 +10,12 @@ const toneClasses = {
     'border border-violet-300/15 bg-[linear-gradient(180deg,rgba(15,23,42,0.94),rgba(30,27,75,0.82))] shadow-[0_30px_80px_rgba(49,46,129,0.3)]',
   subtle:
     'border border-white/8 bg-slate-950/45 shadow-[0_16px_40px_rgba(2,6,23,0.22)]',
+  light:
+    'border border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.04))] shadow-[0_22px_50px_rgba(2,6,23,0.18)]',
+  bordered:
+    'border border-white/12 bg-[linear-gradient(180deg,rgba(15,23,42,0.72),rgba(15,23,42,0.56))] shadow-[0_16px_38px_rgba(2,6,23,0.16)]',
+  roadmap:
+    'border border-violet-300/14 bg-[linear-gradient(180deg,rgba(20,25,52,0.92),rgba(12,18,34,0.86))] shadow-[0_24px_54px_rgba(49,46,129,0.18)]',
 };
 
 const paddingClasses = {
@@ -33,7 +40,7 @@ export default function Card({
       {...props}
       className={cx(
         'relative overflow-hidden rounded-[28px] backdrop-blur-xl transition duration-200',
-        toneClasses[tone],
+        toneClasses[tone] || toneClasses.default,
         paddingClasses[padding],
         className
       )}

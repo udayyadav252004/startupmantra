@@ -1,12 +1,13 @@
 const express = require('express');
 
 const { getDb } = require('../config/firebase');
-const { authenticateFirebaseUser } = require('../middleware/firebaseAuth');
+const { attachFirebaseUserIfPresent, requireFirebaseUser } = require('../middleware/firebaseAuth');
 
 const router = express.Router();
 const ROADMAPS_COLLECTION = 'roadmaps';
 
-router.use(authenticateFirebaseUser);
+router.use(attachFirebaseUserIfPresent);
+router.use(requireFirebaseUser);
 
 function sortNewestFirst(items) {
   return items.sort((first, second) => second.createdAt.localeCompare(first.createdAt));

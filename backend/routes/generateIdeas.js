@@ -1,6 +1,5 @@
 const express = require('express');
 
-const { authenticateFirebaseUser } = require('../middleware/firebaseAuth');
 const {
   buildMockFallbackData,
   generateAIResponse,
@@ -9,8 +8,6 @@ const {
 const { buildIdeaGenerationPrompt } = require('../prompts/ideaGeneratorPrompt');
 
 const router = express.Router();
-
-router.use(authenticateFirebaseUser);
 
 router.post('/', async (req, res) => {
   const category = String(req.body.category || '').trim();
